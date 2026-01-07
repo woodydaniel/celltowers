@@ -1,0 +1,20 @@
+# Test C: Combined (A + B)
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.test-c.yml up -d
+#
+# Combines both approaches:
+# - Harvester uses Hetzner direct IP (no proxy)
+# - Harvester uses persistent Playwright profile
+#
+# This should give the best bandwidth reduction if both approaches are viable.
+
+services:
+  harvester:
+    environment:
+      # Clear proxy settings - use Hetzner's direct IP (Test A)
+      - HARVEST_PROXY=
+      - HARVEST_PROXY_FILE=
+      # Enable persistent browser context (Test B)
+      - USE_PERSISTENT_HARVESTER=true
+      - PERSISTENT_MINTS_PER_CONTEXT=10
+

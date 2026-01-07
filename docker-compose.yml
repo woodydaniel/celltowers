@@ -1,0 +1,451 @@
+# CellMapper Scraper - 3-Carrier Parallel Setup
+# Usage: docker-compose up -d
+# Monitor: docker-compose logs -f
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: cellmapper-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: cellmapper-flaresolverr
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=info
+    ports:
+      - "8191:8191"
+
+  harvester:
+    build: .
+    # NOTE: Do NOT set container_name here; it prevents `docker compose --scale harvester=N`.
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      flaresolverr:
+        condition: service_started
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379/0
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+      # Alerts (Resend)
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - ALERT_EMAIL=${ALERT_EMAIL:-}
+      - CAPTCHA_PROVIDER=${CAPTCHA_PROVIDER:-capmonster}
+      - CAPTCHA_API_KEY=${CAPTCHA_API_KEY:-}
+      - HARVEST_PROXY=${HARVEST_PROXY:-}
+      - HARVEST_PROXY_FILE=${HARVEST_PROXY_FILE:-config/proxies_tmobile_west.txt}
+      # Day-1: prefer real browser cookies (Playwright) + stealth patches.
+      - HARVEST_ENGINE=${HARVEST_ENGINE:-playwright}
+      - PLAYWRIGHT_UA=${PLAYWRIGHT_UA:-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36}
+      # Baseline B: Persistent Playwright profile (reuse browser context to reduce bandwidth per cookie)
+      - USE_PERSISTENT_HARVESTER=${USE_PERSISTENT_HARVESTER:-true}
+      - PERSISTENT_MINTS_PER_CONTEXT=${PERSISTENT_MINTS_PER_CONTEXT:-10}
+      # Match worker tls-client fingerprint to harvester UA/Chrome version.
+      - TLS_CLIENT_IDENTIFIER=${TLS_CLIENT_IDENTIFIER:-chrome_125}
+      # Efficient defaults (unattended + bandwidth-conscious)
+      - COOKIE_TTL_SECONDS=${COOKIE_TTL_SECONDS:-1500}
+      # Harvester loop is continuous. These tune how often it checks the pool when full,
+      # and how long it sleeps between individual harvest attempts when below target.
+      - CHECK_EVERY_SEC=${CHECK_EVERY_SEC:-20}
+      - BACKOFF_SEC=${BACKOFF_SEC:-2}
+      # Legacy (kept for compatibility; no longer the primary sleep mechanism)
+      - HARVEST_INTERVAL_SECONDS=${HARVEST_INTERVAL_SECONDS:-900}
+      - TARGET_POOL_SIZE=${TARGET_POOL_SIZE:-20}
+      # Prefer lightweight harvest URL; override with HARVEST_URL if needed.
+      - HARVEST_URL=${HARVEST_URL:-https://www.cellmapper.net/}
+    command: ["python", "scripts/harvest_cookies.py"]
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+  # Common worker configuration: restart + wait until cookie pool has at least 1 cookie.
+  # Each worker is a long-running container (no nohup), so it will auto-restart after reboots.
+  tmobile_west:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      harvester:
+        condition: service_started
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379/0
+      # Alerts (Resend)
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - ALERT_EMAIL=${ALERT_EMAIL:-}
+      - USE_REDIS_POOL=true
+      - USE_TLS_CLIENT=true
+      - TLS_CLIENT_IDENTIFIER=${TLS_CLIENT_IDENTIFIER:-chrome_125}
+      # Throttle workers to reduce NEED_RECAPTCHA + cookie churn
+      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-20.0}
+      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-30.0}
+      - STRICT_REDIS_POOL=true
+      - COOKIE_POOL_WAIT_TIMEOUT_SECONDS=0
+      - REQUIRED_COOKIES=${REQUIRED_COOKIES:-6}
+      # Don't drain the pool to zero under contention
+      - COOKIEPOOL_MIN=${COOKIEPOOL_MIN:-3}
+      # Return good cookies to the pool for sequential reuse (reduces harvester pressure)
+      # DISABLED: Proactive rotation (at 2 requests) replaces this legacy mode
+      - REDIS_COOKIE_PUTBACK_ON_SUCCESS=${REDIS_COOKIE_PUTBACK_ON_SUCCESS:-false}
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+      - FAST_MODE=${FAST_MODE:-false}
+      # Track bandwidth usage per proxy (stored in Redis)
+      - ENABLE_PROXY_BYTES=${ENABLE_PROXY_BYTES:-true}
+      # Cap cookie reuse to reduce NEED_RECAPTCHA without scaling harvesters
+      - MAX_COOKIE_REUSE=${MAX_COOKIE_REUSE:-3}
+    entrypoint: ["/app/scripts/entrypoint_wait_cookie.sh"]
+    command:
+      - python
+      - main.py
+      - --auto-refresh
+      - --carrier
+      - tmobile
+      - --bounds
+      - "49.384358"
+      - "-124.848974"
+      - "24.396308"
+      - "-96.0"
+      - --run-tag
+      - west
+      - --randomize
+      - --format
+      - jsonl
+    stop_grace_period: 30s
+
+  tmobile_east:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      harvester:
+        condition: service_started
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379/0
+      # Alerts (Resend)
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - ALERT_EMAIL=${ALERT_EMAIL:-}
+      - USE_REDIS_POOL=true
+      - USE_TLS_CLIENT=true
+      - TLS_CLIENT_IDENTIFIER=${TLS_CLIENT_IDENTIFIER:-chrome_125}
+      # Throttle workers to reduce NEED_RECAPTCHA + cookie churn
+      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-20.0}
+      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-30.0}
+      - STRICT_REDIS_POOL=true
+      - COOKIE_POOL_WAIT_TIMEOUT_SECONDS=0
+      - REQUIRED_COOKIES=${REQUIRED_COOKIES:-6}
+      - COOKIEPOOL_MIN=${COOKIEPOOL_MIN:-3}
+      - REDIS_COOKIE_PUTBACK_ON_SUCCESS=${REDIS_COOKIE_PUTBACK_ON_SUCCESS:-true}
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+      - FAST_MODE=${FAST_MODE:-false}
+      # Track bandwidth usage per proxy (stored in Redis)
+      - ENABLE_PROXY_BYTES=${ENABLE_PROXY_BYTES:-true}
+      # Cap cookie reuse to reduce NEED_RECAPTCHA without scaling harvesters
+      - MAX_COOKIE_REUSE=${MAX_COOKIE_REUSE:-3}
+    entrypoint: ["/app/scripts/entrypoint_wait_cookie.sh"]
+    command:
+      - python
+      - main.py
+      - --auto-refresh
+      - --carrier
+      - tmobile
+      - --bounds
+      - "49.384358"
+      - "-96.0"
+      - "24.396308"
+      - "-66.934570"
+      - --run-tag
+      - east
+      - --randomize
+      - --format
+      - jsonl
+    stop_grace_period: 30s
+
+  att_west:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      harvester:
+        condition: service_started
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379/0
+      # Alerts (Resend)
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - ALERT_EMAIL=${ALERT_EMAIL:-}
+      - USE_REDIS_POOL=true
+      - USE_TLS_CLIENT=true
+      - TLS_CLIENT_IDENTIFIER=${TLS_CLIENT_IDENTIFIER:-chrome_125}
+      # Throttle workers to reduce NEED_RECAPTCHA + cookie churn
+      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-20.0}
+      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-30.0}
+      - STRICT_REDIS_POOL=true
+      - COOKIE_POOL_WAIT_TIMEOUT_SECONDS=0
+      - REQUIRED_COOKIES=${REQUIRED_COOKIES:-6}
+      - COOKIEPOOL_MIN=${COOKIEPOOL_MIN:-3}
+      - REDIS_COOKIE_PUTBACK_ON_SUCCESS=${REDIS_COOKIE_PUTBACK_ON_SUCCESS:-true}
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+      - FAST_MODE=${FAST_MODE:-false}
+      # Track bandwidth usage per proxy (stored in Redis)
+      - ENABLE_PROXY_BYTES=${ENABLE_PROXY_BYTES:-true}
+      # Cap cookie reuse to reduce NEED_RECAPTCHA without scaling harvesters
+      - MAX_COOKIE_REUSE=${MAX_COOKIE_REUSE:-3}
+    entrypoint: ["/app/scripts/entrypoint_wait_cookie.sh"]
+    command:
+      - python
+      - main.py
+      - --auto-refresh
+      - --carrier
+      - att
+      - --bounds
+      - "49.384358"
+      - "-124.848974"
+      - "24.396308"
+      - "-96.0"
+      - --run-tag
+      - west
+      - --randomize
+      - --format
+      - jsonl
+    stop_grace_period: 30s
+
+  att_east:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      harvester:
+        condition: service_started
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379/0
+      # Alerts (Resend)
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - ALERT_EMAIL=${ALERT_EMAIL:-}
+      - USE_REDIS_POOL=true
+      - USE_TLS_CLIENT=true
+      - TLS_CLIENT_IDENTIFIER=${TLS_CLIENT_IDENTIFIER:-chrome_125}
+      # Throttle workers to reduce NEED_RECAPTCHA + cookie churn
+      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-20.0}
+      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-30.0}
+      - STRICT_REDIS_POOL=true
+      - COOKIE_POOL_WAIT_TIMEOUT_SECONDS=0
+      - REQUIRED_COOKIES=${REQUIRED_COOKIES:-6}
+      - COOKIEPOOL_MIN=${COOKIEPOOL_MIN:-3}
+      - REDIS_COOKIE_PUTBACK_ON_SUCCESS=${REDIS_COOKIE_PUTBACK_ON_SUCCESS:-true}
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+      - FAST_MODE=${FAST_MODE:-false}
+      # Track bandwidth usage per proxy (stored in Redis)
+      - ENABLE_PROXY_BYTES=${ENABLE_PROXY_BYTES:-true}
+      # Cap cookie reuse to reduce NEED_RECAPTCHA without scaling harvesters
+      - MAX_COOKIE_REUSE=${MAX_COOKIE_REUSE:-3}
+    entrypoint: ["/app/scripts/entrypoint_wait_cookie.sh"]
+    command:
+      - python
+      - main.py
+      - --auto-refresh
+      - --carrier
+      - att
+      - --bounds
+      - "49.384358"
+      - "-96.0"
+      - "24.396308"
+      - "-66.934570"
+      - --run-tag
+      - east
+      - --randomize
+      - --format
+      - jsonl
+    stop_grace_period: 30s
+
+  verizon_west:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      harvester:
+        condition: service_started
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379/0
+      # Alerts (Resend)
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - ALERT_EMAIL=${ALERT_EMAIL:-}
+      - USE_REDIS_POOL=true
+      - USE_TLS_CLIENT=true
+      - TLS_CLIENT_IDENTIFIER=${TLS_CLIENT_IDENTIFIER:-chrome_125}
+      # Throttle workers to reduce NEED_RECAPTCHA + cookie churn
+      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-20.0}
+      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-30.0}
+      - STRICT_REDIS_POOL=true
+      - COOKIE_POOL_WAIT_TIMEOUT_SECONDS=0
+      - REQUIRED_COOKIES=${REQUIRED_COOKIES:-6}
+      - COOKIEPOOL_MIN=${COOKIEPOOL_MIN:-3}
+      - REDIS_COOKIE_PUTBACK_ON_SUCCESS=${REDIS_COOKIE_PUTBACK_ON_SUCCESS:-true}
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+      - FAST_MODE=${FAST_MODE:-false}
+      # Track bandwidth usage per proxy (stored in Redis)
+      - ENABLE_PROXY_BYTES=${ENABLE_PROXY_BYTES:-true}
+      # Cap cookie reuse to reduce NEED_RECAPTCHA without scaling harvesters
+      - MAX_COOKIE_REUSE=${MAX_COOKIE_REUSE:-3}
+    entrypoint: ["/app/scripts/entrypoint_wait_cookie.sh"]
+    command:
+      - python
+      - main.py
+      - --auto-refresh
+      - --carrier
+      - verizon
+      - --bounds
+      - "49.384358"
+      - "-124.848974"
+      - "24.396308"
+      - "-96.0"
+      - --run-tag
+      - west
+      - --randomize
+      - --format
+      - jsonl
+    stop_grace_period: 30s
+
+  verizon_east:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      harvester:
+        condition: service_started
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379/0
+      # Alerts (Resend)
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - ALERT_EMAIL=${ALERT_EMAIL:-}
+      - USE_REDIS_POOL=true
+      - USE_TLS_CLIENT=true
+      - TLS_CLIENT_IDENTIFIER=${TLS_CLIENT_IDENTIFIER:-chrome_125}
+      # Throttle workers to reduce NEED_RECAPTCHA + cookie churn
+      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-20.0}
+      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-30.0}
+      - STRICT_REDIS_POOL=true
+      - COOKIE_POOL_WAIT_TIMEOUT_SECONDS=0
+      - REQUIRED_COOKIES=${REQUIRED_COOKIES:-6}
+      - COOKIEPOOL_MIN=${COOKIEPOOL_MIN:-3}
+      - REDIS_COOKIE_PUTBACK_ON_SUCCESS=${REDIS_COOKIE_PUTBACK_ON_SUCCESS:-true}
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+      - FAST_MODE=${FAST_MODE:-false}
+      # Track bandwidth usage per proxy (stored in Redis)
+      - ENABLE_PROXY_BYTES=${ENABLE_PROXY_BYTES:-true}
+      # Cap cookie reuse to reduce NEED_RECAPTCHA without scaling harvesters
+      - MAX_COOKIE_REUSE=${MAX_COOKIE_REUSE:-3}
+    entrypoint: ["/app/scripts/entrypoint_wait_cookie.sh"]
+    command:
+      - python
+      - main.py
+      - --auto-refresh
+      - --carrier
+      - verizon
+      - --bounds
+      - "49.384358"
+      - "-96.0"
+      - "24.396308"
+      - "-66.934570"
+      - --run-tag
+      - east
+      - --randomize
+      - --format
+      - jsonl
+    stop_grace_period: 30s
+
+  # Public status API (for Vercel to poll). Reads ./data + ./logs just like workers.
+  # Security: enable bearer token via DASHBOARD_BEARER_TOKEN (recommended).
+  dashboard_api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DASHBOARD_HOST=0.0.0.0
+      - DASHBOARD_PORT=8088
+      - DASHBOARD_ACTIVE_WINDOW_SEC=${DASHBOARD_ACTIVE_WINDOW_SEC:-21600}
+      - DASHBOARD_BEARER_TOKEN=${DASHBOARD_BEARER_TOKEN:-}
+      - DASHBOARD_DATA_DIR=/app/data
+      - DASHBOARD_LOGS_DIR=/app/logs
+    command: ["python", "dashboard/server.py"]
+
+  # HTTPS reverse proxy for status-api.shefa7.com → dashboard_api:8088
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - dashboard_api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  redis_data:
+  caddy_data:
+  caddy_config:

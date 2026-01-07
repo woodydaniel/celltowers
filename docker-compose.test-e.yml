@@ -1,0 +1,44 @@
+# Test E: Combined - Persistent Harvester + Workers on Hetzner direct IP
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.test-e.yml up -d
+#
+# Combines:
+# - Test B: Persistent harvester (reuse browser context to reduce BW per cookie)
+# - Test D: Workers run without proxies (Hetzner direct IP)
+#
+# Goal:
+# - Pay proxy bandwidth only for cookie minting (and even that is reduced via persistence)
+# - Make worker API traffic free/unmetered
+
+services:
+  harvester:
+    environment:
+      - USE_PERSISTENT_HARVESTER=true
+      - PERSISTENT_MINTS_PER_CONTEXT=10
+
+  tmobile_west:
+    environment:
+      - USE_PROXY=false
+
+  tmobile_east:
+    environment:
+      - USE_PROXY=false
+
+  att_west:
+    environment:
+      - USE_PROXY=false
+
+  att_east:
+    environment:
+      - USE_PROXY=false
+
+  verizon_west:
+    environment:
+      - USE_PROXY=false
+
+  verizon_east:
+    environment:
+      - USE_PROXY=false
+
+

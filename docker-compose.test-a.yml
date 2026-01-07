@@ -1,0 +1,17 @@
+# Test A: Harvester uses Hetzner direct IP (no proxy)
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.test-a.yml up -d
+#
+# Hypothesis: If harvester doesn't route through Decodo proxies,
+# bandwidth cost drops dramatically. Workers still use proxies for API calls.
+# Risk: Hetzner's IP might get flagged.
+
+services:
+  harvester:
+    environment:
+      # Clear proxy settings - use Hetzner's direct IP
+      - HARVEST_PROXY=
+      - HARVEST_PROXY_FILE=
+      # Keep standard (non-persistent) harvester
+      - USE_PERSISTENT_HARVESTER=false
+

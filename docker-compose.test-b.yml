@@ -1,0 +1,17 @@
+# Test B: Persistent Playwright profile
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.test-b.yml up -d
+#
+# Hypothesis: Reusing a browser context across multiple cookie mints avoids
+# cold-start resource loads (~2MB savings per mint after first).
+# This should reduce harvester bandwidth while maintaining cookie quality.
+
+services:
+  harvester:
+    environment:
+      # Enable persistent browser context
+      - USE_PERSISTENT_HARVESTER=true
+      # Rotate context every N mints (anti-fingerprinting)
+      - PERSISTENT_MINTS_PER_CONTEXT=10
+      # Keep proxy settings from base compose
+

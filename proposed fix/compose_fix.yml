@@ -1,0 +1,234 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: atlasgrid-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - atlasgrid-net
+
+  harvester:
+    build:
+      context: .
+      dockerfile: Dockerfile.harvester
+    container_name: atlasgrid-harvester
+    depends_on:
+      - redis
+    environment:
+      HARVEST_URL: "${HARVEST_URL:-https://www.atlasgrid.net/}"
+      TARGET_POOL_SIZE: "${TARGET_POOL_SIZE:-20}"
+      COOKIEPOOL_MIN: "${COOKIEPOOL_MIN:-3}"
+      MAX_COOKIE_REUSE: "${MAX_COOKIE_REUSE:-10}"
+      REDIS_HOST: "${REDIS_HOST:-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      PROXY_USERNAME: "${PROXY_USERNAME}"
+      PROXY_PASSWORD: "${PROXY_PASSWORD}"
+      PROXY_ENDPOINT: "${PROXY_ENDPOINT:-gateway.residential.com:10000}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+    networks:
+      - atlasgrid-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+
+  tmobile_east:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: atlasgrid-worker-tmobile-east
+    depends_on:
+      - redis
+    environment:
+      CARRIER: "tmobile"
+      REGION: "east"
+      MAX_COOKIE_REUSE: "${MAX_COOKIE_REUSE:-10}"
+      REQUESTS_PER_SESSION: "${REQUESTS_PER_SESSION:-1}"
+      REQUEST_DELAY_MIN: "${REQUEST_DELAY_MIN:-20.0}"
+      REQUEST_DELAY_MAX: "${REQUEST_DELAY_MAX:-30.0}"
+      REDIS_HOST: "${REDIS_HOST:-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      PROXY_USERNAME: "${PROXY_USERNAME}"
+      PROXY_PASSWORD: "${PROXY_PASSWORD}"
+      PROXY_ENDPOINT: "${PROXY_ENDPOINT:-gateway.residential.com:10000}"
+      ENABLE_PROXY_BYTES: "${ENABLE_PROXY_BYTES:-true}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+    networks:
+      - atlasgrid-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+  tmobile_west:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: atlasgrid-worker-tmobile-west
+    depends_on:
+      - redis
+    environment:
+      CARRIER: "tmobile"
+      REGION: "west"
+      MAX_COOKIE_REUSE: "${MAX_COOKIE_REUSE:-10}"
+      REQUESTS_PER_SESSION: "${REQUESTS_PER_SESSION:-1}"
+      REQUEST_DELAY_MIN: "${REQUEST_DELAY_MIN:-20.0}"
+      REQUEST_DELAY_MAX: "${REQUEST_DELAY_MAX:-30.0}"
+      REDIS_HOST: "${REDIS_HOST:-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      PROXY_USERNAME: "${PROXY_USERNAME}"
+      PROXY_PASSWORD: "${PROXY_PASSWORD}"
+      PROXY_ENDPOINT: "${PROXY_ENDPOINT:-gateway.residential.com:10000}"
+      ENABLE_PROXY_BYTES: "${ENABLE_PROXY_BYTES:-true}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+    networks:
+      - atlasgrid-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+  att_east:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: atlasgrid-worker-att-east
+    depends_on:
+      - redis
+    environment:
+      CARRIER: "att"
+      REGION: "east"
+      MAX_COOKIE_REUSE: "${MAX_COOKIE_REUSE:-10}"
+      REQUESTS_PER_SESSION: "${REQUESTS_PER_SESSION:-1}"
+      REQUEST_DELAY_MIN: "${REQUEST_DELAY_MIN:-20.0}"
+      REQUEST_DELAY_MAX: "${REQUEST_DELAY_MAX:-30.0}"
+      REDIS_HOST: "${REDIS_HOST:-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      PROXY_USERNAME: "${PROXY_USERNAME}"
+      PROXY_PASSWORD: "${PROXY_PASSWORD}"
+      PROXY_ENDPOINT: "${PROXY_ENDPOINT:-gateway.residential.com:10000}"
+      ENABLE_PROXY_BYTES: "${ENABLE_PROXY_BYTES:-true}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+    networks:
+      - atlasgrid-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+  att_west:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: atlasgrid-worker-att-west
+    depends_on:
+      - redis
+    environment:
+      CARRIER: "att"
+      REGION: "west"
+      MAX_COOKIE_REUSE: "${MAX_COOKIE_REUSE:-10}"
+      REQUESTS_PER_SESSION: "${REQUESTS_PER_SESSION:-1}"
+      REQUEST_DELAY_MIN: "${REQUEST_DELAY_MIN:-20.0}"
+      REQUEST_DELAY_MAX: "${REQUEST_DELAY_MAX:-30.0}"
+      REDIS_HOST: "${REDIS_HOST:-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      PROXY_USERNAME: "${PROXY_USERNAME}"
+      PROXY_PASSWORD: "${PROXY_PASSWORD}"
+      PROXY_ENDPOINT: "${PROXY_ENDPOINT:-gateway.residential.com:10000}"
+      ENABLE_PROXY_BYTES: "${ENABLE_PROXY_BYTES:-true}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+    networks:
+      - atlasgrid-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+  verizon_east:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: atlasgrid-worker-verizon-east
+    depends_on:
+      - redis
+    environment:
+      CARRIER: "verizon"
+      REGION: "east"
+      MAX_COOKIE_REUSE: "${MAX_COOKIE_REUSE:-10}"
+      REQUESTS_PER_SESSION: "${REQUESTS_PER_SESSION:-1}"
+      REQUEST_DELAY_MIN: "${REQUEST_DELAY_MIN:-20.0}"
+      REQUEST_DELAY_MAX: "${REQUEST_DELAY_MAX:-30.0}"
+      REDIS_HOST: "${REDIS_HOST:-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      PROXY_USERNAME: "${PROXY_USERNAME}"
+      PROXY_PASSWORD: "${PROXY_PASSWORD}"
+      PROXY_ENDPOINT: "${PROXY_ENDPOINT:-gateway.residential.com:10000}"
+      ENABLE_PROXY_BYTES: "${ENABLE_PROXY_BYTES:-true}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+    networks:
+      - atlasgrid-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+  verizon_west:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: atlasgrid-worker-verizon-west
+    depends_on:
+      - redis
+    environment:
+      CARRIER: "verizon"
+      REGION: "west"
+      MAX_COOKIE_REUSE: "${MAX_COOKIE_REUSE:-10}"
+      REQUESTS_PER_SESSION: "${REQUESTS_PER_SESSION:-1}"
+      REQUEST_DELAY_MIN: "${REQUEST_DELAY_MIN:-20.0}"
+      REQUEST_DELAY_MAX: "${REQUEST_DELAY_MAX:-30.0}"
+      REDIS_HOST: "${REDIS_HOST:-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      PROXY_USERNAME: "${PROXY_USERNAME}"
+      PROXY_PASSWORD: "${PROXY_PASSWORD}"
+      PROXY_ENDPOINT: "${PROXY_ENDPOINT:-gateway.residential.com:10000}"
+      ENABLE_PROXY_BYTES: "${ENABLE_PROXY_BYTES:-true}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+    networks:
+      - atlasgrid-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+
+volumes:
+  redis_data:
+
+networks:
+  atlasgrid-net:
+    driver: bridge

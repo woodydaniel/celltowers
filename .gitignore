@@ -1,0 +1,52 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Sensitive configuration
+config/cookies.txt
+config/proxies.txt
+
+# Data and logs (large files, regeneratable)
+data/
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+
+# Never commit Cursor scratchpads / internal notes
+.cursor/
+
+# Backups (large + may contain sensitive data)
+backups/
+*.tar.gz
+
+# Proxy lists (contain credentials)
+config/proxies*.txt
+
+# Templates may contain sensitive values in this repo; keep local-only
+.env.example
+
+
+
+
+
+
+

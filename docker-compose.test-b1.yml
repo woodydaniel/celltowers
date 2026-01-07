@@ -1,0 +1,13 @@
+# Phase 2 - b1: Increase mints per context to 25
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.test-b1.yml up -d
+#
+# Hypothesis: More mints per context increases cache reuse and reduces average harvester bandwidth per cookie.
+
+services:
+  harvester:
+    environment:
+      - PERSISTENT_MINTS_PER_CONTEXT=25
+
+

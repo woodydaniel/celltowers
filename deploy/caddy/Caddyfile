@@ -1,0 +1,17 @@
+# CellMapper Status API - Caddy Configuration
+# Provides HTTPS reverse proxy to the dashboard API
+
+status-api.shefa7.com {
+    # Reverse proxy to dashboard API
+    reverse_proxy /api/status dashboard_api:8088
+    reverse_proxy /health dashboard_api:8088
+    
+    # Return 404 for all other paths (security)
+    respond "Not Found" 404
+    
+    # Logging
+    log {
+        output stdout
+        format console
+    }
+}

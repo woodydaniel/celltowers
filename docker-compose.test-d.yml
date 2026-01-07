@@ -1,0 +1,40 @@
+# Test D: Workers use Hetzner direct IP (no proxy)
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.test-d.yml up -d
+#
+# Hypothesis:
+# - CellMapper checks "humanity" hardest at cookie minting (Cloudflare / SPA handshake).
+# - Once we have valid cookies, API calls may succeed from a datacenter IP (Hetzner).
+# - This eliminates all worker proxy bandwidth cost.
+#
+# IMPORTANT:
+# - Harvester remains unchanged (keeps using HARVEST_PROXY/HARVEST_PROXY_FILE if configured).
+# - We rely on code respecting USE_PROXY=false to avoid forcing cookie->proxy affinity.
+
+services:
+  tmobile_west:
+    environment:
+      - USE_PROXY=false
+
+  tmobile_east:
+    environment:
+      - USE_PROXY=false
+
+  att_west:
+    environment:
+      - USE_PROXY=false
+
+  att_east:
+    environment:
+      - USE_PROXY=false
+
+  verizon_west:
+    environment:
+      - USE_PROXY=false
+
+  verizon_east:
+    environment:
+      - USE_PROXY=false
+
+

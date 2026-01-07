@@ -1,0 +1,43 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+
+# Data (mounted as volumes)
+data/towers/
+logs/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.cursor/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Docs
+README.md
+*.md
+
+
+
+
+
+
+
+
+
+

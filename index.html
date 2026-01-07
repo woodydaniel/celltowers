@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scrape Status</title>
+    <style>
+      :root {
+        --bg0: #070a12;
+        --bg1: #0b1222;
+        --card: rgba(255, 255, 255, 0.05);
+        --stroke: rgba(255, 255, 255, 0.10);
+        --stroke2: rgba(255, 255, 255, 0.16);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.64);
+        --muted2: rgba(255, 255, 255, 0.52);
+        --good: #32d583;
+        --warn: #fdb022;
+        --bad: #f04438;
+        --brand: #7c3aed;
+        --brand2: #22d3ee;
+        --shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+        --shadow2: 0 10px 25px rgba(0, 0, 0, 0.35);
+        --radius: 16px;
+        --radius2: 12px;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        font-family: var(--sans);
+        color: var(--text);
+        background:
+          radial-gradient(800px 500px at 15% 10%, rgba(124, 58, 237, 0.24), transparent 60%),
+          radial-gradient(800px 500px at 85% 20%, rgba(34, 211, 238, 0.18), transparent 60%),
+          linear-gradient(180deg, var(--bg0), var(--bg1));
+        letter-spacing: -0.01em;
+      }
+      .wrap { max-width: 980px; margin: 0 auto; padding: 28px 22px 40px; }
+      .top { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:18px; }
+      .title { display:flex; flex-direction:column; gap:6px; }
+      h1 { font-size:18px; font-weight:640; margin:0; }
+      .subtitle { font-size:13px; color:var(--muted); line-height:1.35; }
+      .right { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+      @media (max-width: 920px) { .right{align-items:flex-start} .top{flex-direction:column} }
+      .pill {
+        display:inline-flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);
+        padding:7px 10px; border:1px solid var(--stroke); background: rgba(255,255,255,0.03);
+        border-radius:999px; box-shadow: var(--shadow2); backdrop-filter: blur(10px);
+      }
+      .dot { width:8px; height:8px; border-radius:99px; background: var(--warn);
+        box-shadow: 0 0 0 3px rgba(253, 176, 34, 0.16);
+        transition: background 220ms ease, box-shadow 220ms ease;
+      }
+      .dot.good { background: var(--good); box-shadow: 0 0 0 3px rgba(50, 213, 131, 0.18); }
+      .dot.bad { background: var(--bad); box-shadow: 0 0 0 3px rgba(240, 68, 56, 0.18); }
+      .grid { display:grid; grid-template-columns:1fr; gap:16px; }
+      .card {
+        border-radius: var(--radius);
+        background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+        border: 1px solid var(--stroke);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(12px);
+        overflow: hidden;
+        transition: transform 240ms ease, border-color 240ms ease, background 240ms ease;
+      }
+      .card:hover { transform: translateY(-2px); border-color: var(--stroke2); }
+      .cardHd {
+        padding: 16px 16px 12px;
+        display:flex; justify-content:space-between; align-items:baseline; gap:12px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+      }
+      .cardHd .k { font-size:13px; color: var(--muted); }
+      .cardHd .v { font-size:13px; color: var(--muted2); font-family: var(--mono); }
+      .cardBd { padding: 16px; }
+      .bar { width:100%; height:12px; border-radius:999px; background: rgba(255,255,255,0.06);
+        border:1px solid rgba(255,255,255,0.07); overflow:hidden; position:relative;
+      }
+      .bar > .fill { height:100%; width:0%; border-radius:999px;
+        background: linear-gradient(90deg, var(--brand), var(--brand2));
+        box-shadow: 0 10px 22px rgba(124, 58, 237, 0.22);
+        transition: width 650ms cubic-bezier(.2,.8,.2,1);
+        position:relative;
+      }
+      .bar > .fill::after {
+        content:""; position:absolute; inset:0;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.24), transparent);
+        transform: translateX(-100%); animation: shimmer 1.6s ease-in-out infinite; opacity: .55;
+      }
+      @keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(140%)} }
+      .progressWrap { display:flex; flex-direction:column; gap:10px; margin-top:4px; }
+      .stats { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; }
+      @media (max-width:520px) { .stats { grid-template-columns:1fr; } }
+      .stat {
+        border-radius: var(--radius2); background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.07); padding: 12px;
+        transition: transform 240ms ease, border-color 240ms ease, background 240ms ease;
+      }
+      .stat:hover { transform: translateY(-1px); border-color: rgba(255,255,255,0.14); background: rgba(255,255,255,0.045); }
+      .stat .k { font-size:12px; color: var(--muted); }
+      .stat .v { font-size:22px; font-weight:660; margin-top:6px; letter-spacing:-0.02em; }
+      .stat .s { font-size:12px; color: var(--muted2); margin-top:6px; font-family: var(--mono); }
+      .hint { margin-top: 12px; font-size: 12px; color: var(--muted2); line-height: 1.4; }
+      .footer { margin-top: 14px; font-size: 12px; color: var(--muted2); display:flex; justify-content:flex-end; gap:14px; flex-wrap:wrap; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <div class="title">
+          <h1>Scrape status</h1>
+          <div class="subtitle">Live progress and estimated completion time.</div>
+        </div>
+        <div class="right">
+          <div class="pill" title="Auto-refreshes every 2s">
+            <span class="dot" id="dot"></span>
+            <span id="state">Loading…</span>
+            <span style="opacity:.55">·</span>
+            <span id="updated" style="font-family: var(--mono)">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="cardHd">
+            <div class="k">Overview</div>
+            <div class="v" id="runId">—</div>
+          </div>
+          <div class="cardBd">
+            <div class="progressWrap">
+              <div class="bar"><div class="fill" id="fill"></div></div>
+              <div class="subtitle" id="barLabel">—</div>
+            </div>
+
+            <div class="stats">
+              <div class="stat">
+                <div class="k">Towers collected</div>
+                <div class="v" id="towers">—</div>
+                <div class="s" id="towersSub">Updated as data is collected</div>
+              </div>
+              <div class="stat">
+                <div class="k">Progress</div>
+                <div class="v" id="pct">—</div>
+                <div class="s">Overall completion</div>
+              </div>
+              <div class="stat">
+                <div class="k">Estimated finish</div>
+                <div class="v" id="finish">—</div>
+                <div class="s" id="eta">—</div>
+              </div>
+              <div class="stat">
+                <div class="k">Status</div>
+                <div class="v" id="status">—</div>
+                <div class="s" id="statusSub">—</div>
+              </div>
+            </div>
+
+            <div class="hint" id="hint">Waiting for live updates…</div>
+            <div class="footer"><div style="font-family:var(--mono)" id="serverTime">—</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const el = (id) => document.getElementById(id);
+      const fmtInt = (n) => (n == null ? "—" : new Intl.NumberFormat().format(n));
+      const fmtPct = (n) => (n == null ? "—" : `${n.toFixed(1)}%`);
+      function fmtDate(iso) {
+        if (!iso) return "—";
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return "—";
+        return d.toLocaleString(undefined, { year:"numeric", month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit" });
+      }
+      function animateNumber(targetEl, next, opts = {}) {
+        const prev = Number(targetEl.dataset.n ?? "0");
+        const end = Number(next ?? 0);
+        const start = isFinite(prev) ? prev : 0;
+        const dur = opts.duration ?? 520;
+        const t0 = performance.now();
+        function step(t) {
+          const p = Math.min(1, (t - t0) / dur);
+          const eased = 1 - Math.pow(1 - p, 3);
+          const cur = start + (end - start) * eased;
+          targetEl.textContent = opts.format ? opts.format(cur) : String(Math.round(cur));
+          if (p < 1) requestAnimationFrame(step);
+          else targetEl.dataset.n = String(end);
+        }
+        requestAnimationFrame(step);
+      }
+      async function tick() {
+        try {
+          const r = await fetch("/api/status?ts=" + Date.now(), { cache: "no-store" });
+          const data = await r.json();
+          const ok = Boolean(data.ok);
+          el("state").textContent = ok ? (data.active ? "Live" : "No updates") : "Error";
+          el("updated").textContent = data.generated_at ? fmtDate(data.generated_at) : "—";
+          const dot = el("dot");
+          dot.className = "dot" + (ok && data.active ? " good" : ok ? " warn" : " bad");
+
+          el("runId").textContent = data.run_id || "—";
+          const pct = data.progress?.completion_percent ?? null;
+          el("fill").style.width = (pct != null ? pct.toFixed(1) : "0") + "%";
+          el("barLabel").textContent = data.progress ? `Completion: ${fmtPct(pct)}` : "—";
+
+          animateNumber(el("towers"), data.progress?.towers_collected ?? 0, { format: (v) => fmtInt(Math.round(v)) });
+          el("pct").textContent = fmtPct(pct);
+
+          el("finish").textContent = data.eta?.projected_finish_at ? fmtDate(data.eta.projected_finish_at) : "—";
+          el("eta").textContent = data.eta?.eta_human ? `Estimated time remaining: ${data.eta.eta_human}` : "—";
+
+          const hs = data.health?.state ?? null;
+          const stateLabel = hs === "good" ? "Running" : hs === "warn" ? "Running (slower)" : hs === "bad" ? "Needs attention" : "Idle";
+          el("status").textContent = stateLabel;
+          el("statusSub").textContent = data.active ? "Updating automatically" : "No recent updates";
+          el("hint").style.display = data.active ? "none" : "block";
+          el("serverTime").textContent = data.server_time ? `server: ${fmtDate(data.server_time)}` : "";
+        } catch (e) {
+          el("state").textContent = "Error";
+          el("dot").className = "dot bad";
+        }
+      }
+      tick();
+      setInterval(tick, 2000);
+    </script>
+  </body>
+</html>
+
+

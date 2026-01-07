@@ -1,0 +1,113 @@
+{
+  "carriers": {
+    "verizon": {
+      "name": "Verizon Wireless",
+      "mcc_mnc": [
+        {"mcc": 311, "mnc": 480, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 481, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 482, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 483, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 484, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 485, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 486, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 487, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 488, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 489, "description": "Verizon Wireless"},
+        {"mcc": 310, "mnc": 4, "description": "Verizon Wireless"},
+        {"mcc": 310, "mnc": 10, "description": "Verizon Wireless"},
+        {"mcc": 310, "mnc": 12, "description": "Verizon Wireless"},
+        {"mcc": 310, "mnc": 13, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 270, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 271, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 272, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 273, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 274, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 275, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 276, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 277, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 278, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 279, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 280, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 281, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 282, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 283, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 284, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 285, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 286, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 287, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 288, "description": "Verizon Wireless"},
+        {"mcc": 311, "mnc": 289, "description": "Verizon Wireless"}
+      ]
+    },
+    "att": {
+      "name": "AT&T",
+      "mcc_mnc": [
+        {"mcc": 310, "mnc": 410, "description": "AT&T Mobility"},
+        {"mcc": 310, "mnc": 150, "description": "AT&T Mobility"},
+        {"mcc": 310, "mnc": 170, "description": "AT&T Mobility"},
+        {"mcc": 310, "mnc": 380, "description": "AT&T Mobility"},
+        {"mcc": 310, "mnc": 560, "description": "AT&T Mobility"},
+        {"mcc": 310, "mnc": 680, "description": "AT&T Mobility"},
+        {"mcc": 310, "mnc": 980, "description": "AT&T Mobility"},
+        {"mcc": 311, "mnc": 180, "description": "AT&T Mobility"},
+        {"mcc": 313, "mnc": 100, "description": "AT&T FirstNet"}
+      ]
+    },
+    "tmobile": {
+      "name": "T-Mobile",
+      "mcc_mnc": [
+        {"mcc": 310, "mnc": 260, "description": "T-Mobile USA (primary)"},
+        {"mcc": 310, "mnc": 160, "description": "T-Mobile USA"},
+        {"mcc": 310, "mnc": 200, "description": "T-Mobile USA"},
+        {"mcc": 310, "mnc": 210, "description": "T-Mobile USA"},
+        {"mcc": 310, "mnc": 220, "description": "T-Mobile USA"},
+        {"mcc": 310, "mnc": 230, "description": "T-Mobile USA"},
+        {"mcc": 310, "mnc": 240, "description": "T-Mobile USA"},
+        {"mcc": 310, "mnc": 250, "description": "T-Mobile USA"},
+        {"mcc": 310, "mnc": 270, "description": "T-Mobile USA"},
+        {"mcc": 310, "mnc": 310, "description": "T-Mobile USA"},
+        {"mcc": 310, "mnc": 490, "description": "T-Mobile USA"},
+        {"mcc": 310, "mnc": 580, "description": "T-Mobile USA"},
+        {"mcc": 310, "mnc": 660, "description": "T-Mobile USA"},
+        {"mcc": 311, "mnc": 490, "description": "T-Mobile USA (Sprint legacy)"},
+        {"mcc": 311, "mnc": 882, "description": "T-Mobile USA (Sprint legacy)"},
+        {"mcc": 312, "mnc": 250, "description": "T-Mobile USA (Sprint legacy)"},
+        {"mcc": 316, "mnc": 10, "description": "T-Mobile USA (Sprint legacy)"}
+      ]
+    }
+  },
+  "bands": {
+    "lte": {
+      "2": {"frequency": "1900 MHz", "name": "PCS"},
+      "4": {"frequency": "1700/2100 MHz", "name": "AWS-1"},
+      "5": {"frequency": "850 MHz", "name": "Cellular"},
+      "12": {"frequency": "700 MHz", "name": "Lower 700"},
+      "13": {"frequency": "700 MHz", "name": "Upper 700 C"},
+      "14": {"frequency": "700 MHz", "name": "FirstNet"},
+      "25": {"frequency": "1900 MHz", "name": "Extended PCS"},
+      "26": {"frequency": "850 MHz", "name": "Extended Cellular"},
+      "30": {"frequency": "2300 MHz", "name": "WCS"},
+      "41": {"frequency": "2500 MHz", "name": "BRS/EBS"},
+      "46": {"frequency": "5 GHz", "name": "LAA"},
+      "48": {"frequency": "3.5 GHz", "name": "CBRS"},
+      "66": {"frequency": "1700/2100 MHz", "name": "AWS-3"},
+      "71": {"frequency": "600 MHz", "name": "600 MHz"}
+    },
+    "5g_nr": {
+      "n2": {"frequency": "1900 MHz", "name": "PCS"},
+      "n5": {"frequency": "850 MHz", "name": "Cellular"},
+      "n25": {"frequency": "1900 MHz", "name": "Extended PCS"},
+      "n41": {"frequency": "2500 MHz", "name": "BRS/EBS"},
+      "n66": {"frequency": "1700/2100 MHz", "name": "AWS"},
+      "n71": {"frequency": "600 MHz", "name": "600 MHz"},
+      "n77": {"frequency": "3.7 GHz", "name": "C-Band"},
+      "n78": {"frequency": "3.5 GHz", "name": "CBRS"},
+      "n260": {"frequency": "39 GHz", "name": "mmWave"},
+      "n261": {"frequency": "28 GHz", "name": "mmWave"}
+    }
+  }
+}
+
+
+
+

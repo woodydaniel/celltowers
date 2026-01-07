@@ -1,0 +1,35 @@
+# Phase 2 - b5: Best combination (initially: b1 + b3)
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.test-b5.yml up -d
+#
+# Combine the best of prior tests. This file starts with a conservative combo:
+# - More mints per context (25) to reduce BW/cookie
+# - Higher cookie reuse (20) to reduce cookie churn
+#
+# If b4 (Webshare) is successful, we can optionally extend b5 later to use Webshare too.
+
+services:
+  harvester:
+    environment:
+      - PERSISTENT_MINTS_PER_CONTEXT=25
+  tmobile_west:
+    environment:
+      - MAX_COOKIE_REUSE=20
+  tmobile_east:
+    environment:
+      - MAX_COOKIE_REUSE=20
+  att_west:
+    environment:
+      - MAX_COOKIE_REUSE=20
+  att_east:
+    environment:
+      - MAX_COOKIE_REUSE=20
+  verizon_west:
+    environment:
+      - MAX_COOKIE_REUSE=20
+  verizon_east:
+    environment:
+      - MAX_COOKIE_REUSE=20
+
+

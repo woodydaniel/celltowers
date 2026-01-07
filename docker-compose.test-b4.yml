@@ -1,0 +1,18 @@
+# Phase 2 - b4: Webshare proxies (rotating)
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.test-b4.yml up -d
+#
+# Requirements:
+#   - Fill config/proxies_webshare.txt with Webshare rotating proxy URLs.
+#
+# Hypothesis: Lower $/GB while keeping similar CAPTCHA rate and throughput.
+
+services:
+  harvester:
+    environment:
+      # Use Webshare rotating proxy list for harvesting (cookies embed proxy URL; workers follow via cookie→proxy affinity)
+      - HARVEST_PROXY=
+      - HARVEST_PROXY_FILE=config/proxies_webshare.txt
+
+

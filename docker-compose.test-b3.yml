@@ -1,0 +1,28 @@
+# Phase 2 - b3: Increase cookie reuse to 20
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.test-b3.yml up -d
+#
+# Hypothesis: Higher reuse reduces cookie churn and reduces total harvest bandwidth.
+
+services:
+  tmobile_west:
+    environment:
+      - MAX_COOKIE_REUSE=20
+  tmobile_east:
+    environment:
+      - MAX_COOKIE_REUSE=20
+  att_west:
+    environment:
+      - MAX_COOKIE_REUSE=20
+  att_east:
+    environment:
+      - MAX_COOKIE_REUSE=20
+  verizon_west:
+    environment:
+      - MAX_COOKIE_REUSE=20
+  verizon_east:
+    environment:
+      - MAX_COOKIE_REUSE=20
+
+

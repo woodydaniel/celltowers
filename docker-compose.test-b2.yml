@@ -1,0 +1,13 @@
+# Phase 2 - b2: Increase mints per context to 50
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.test-b2.yml up -d
+#
+# Hypothesis: Further increases cache reuse and reduces BW/cookie, but may increase fingerprinting risk.
+
+services:
+  harvester:
+    environment:
+      - PERSISTENT_MINTS_PER_CONTEXT=50
+
+
