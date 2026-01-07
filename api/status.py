@@ -4,19 +4,8 @@ import json
 import os
 import urllib.request
 from datetime import datetime, timezone
-from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse
-
-
-def _json_response(body: dict, status: int = 200) -> tuple[str, int, dict]:
-    return (
-        json.dumps(body),
-        status,
-        {
-            "Content-Type": "application/json; charset=utf-8",
-            "Cache-Control": "no-store",
-        },
-    )
 
 
 def _utc_now_iso() -> str:
@@ -113,54 +102,74 @@ def _normalize_upstream(data: dict) -> dict:
     }
 
 
-def handler(request):
+class handler(BaseHTTPRequestHandler):
     """
-    Vercel Serverless Function (Python) – secure proxy to the scraper's status endpoint.
+    Vercel Python Function entrypoint.
+
+    This uses the supported BaseHTTPRequestHandler pattern. The frontend calls:
+      GET /api/status
 
     Env vars (set in Vercel):
-      - SCRAPER_STATUS_URL: e.g. https://your-server.example.com/api/status
-      - SCRAPER_STATUS_BEARER_TOKEN: bearer token expected by scraper server
-      - ALLOW_INSECURE_STATUS_URL: "true" to allow http:// (default: false)
+      - SCRAPER_STATUS_URL or CELLMAPPER_API_URL
+      - SCRAPER_STATUS_BEARER_TOKEN or CELLMAPPER_API_TOKEN
+      - ALLOW_INSECURE_STATUS_URL ("true" to allow http://)
     """
-    # Support both naming conventions.
-    url = (os.environ.get("SCRAPER_STATUS_URL") or os.environ.get("CELLMAPPER_API_URL", "")).strip()
-    token = (os.environ.get("SCRAPER_STATUS_BEARER_TOKEN") or os.environ.get("CELLMAPPER_API_TOKEN", "")).strip()
-    allow_insecure = os.environ.get("ALLOW_INSECURE_STATUS_URL", "false").lower() == "true"
 
-    if not url:
-        return _json_response({"ok": False, "error": "missing_env", "env": "SCRAPER_STATUS_URL|CELLMAPPER_API_URL"}, 500)
-    if not token:
-        return _json_response(
-            {"ok": False, "error": "missing_env", "env": "SCRAPER_STATUS_BEARER_TOKEN|CELLMAPPER_API_TOKEN"},
-            500,
-        )
+    def _send_json(self, status: int, payload: dict) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
-    parsed = urlparse(url)
-    if parsed.scheme not in ("https", "http"):
-        return _json_response({"ok": False, "error": "invalid_url"}, 400)
-    if parsed.scheme == "http" and not allow_insecure:
-        return _json_response({"ok": False, "error": "insecure_url_not_allowed"}, 400)
-    if not parsed.netloc:
-        return _json_response({"ok": False, "error": "invalid_url"}, 400)
+    def do_GET(self) -> None:
+        # Support both naming conventions.
+        url = (os.environ.get("SCRAPER_STATUS_URL") or os.environ.get("CELLMAPPER_API_URL", "")).strip()
+        token = (os.environ.get("SCRAPER_STATUS_BEARER_TOKEN") or os.environ.get("CELLMAPPER_API_TOKEN", "")).strip()
+        allow_insecure = os.environ.get("ALLOW_INSECURE_STATUS_URL", "false").lower() == "true"
 
-    req = urllib.request.Request(url, method="GET")
-    req.add_header("Accept", "application/json")
-    req.add_header("Authorization", f"Bearer {token}")
+        if not url:
+            self._send_json(
+                500,
+                {"ok": False, "error": "missing_env", "env": "SCRAPER_STATUS_URL|CELLMAPPER_API_URL"},
+            )
+            return
+        if not token:
+            self._send_json(
+                500,
+                {"ok": False, "error": "missing_env", "env": "SCRAPER_STATUS_BEARER_TOKEN|CELLMAPPER_API_TOKEN"},
+            )
+            return
 
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-            data = json.loads(raw)
-    except Exception:
-        return _json_response({"ok": False, "error": "upstream_unreachable"}, 502)
+        parsed = urlparse(url)
+        if parsed.scheme not in ("https", "http") or not parsed.netloc:
+            self._send_json(400, {"ok": False, "error": "invalid_url"})
+            return
+        if parsed.scheme == "http" and not allow_insecure:
+            self._send_json(400, {"ok": False, "error": "insecure_url_not_allowed"})
+            return
 
-    if not isinstance(data, dict):
-        return _json_response({"ok": False, "error": "invalid_upstream_payload"}, 502)
+        req = urllib.request.Request(url, method="GET")
+        req.add_header("Accept", "application/json")
+        req.add_header("Authorization", f"Bearer {token}")
 
-    normalized = _normalize_upstream(data)
-    # Security: never return worker-level detail from the proxy.
-    normalized["workers"] = []
-    normalized.pop("debug", None)
-    return _json_response(normalized, HTTPStatus.OK)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+                data = json.loads(raw)
+        except Exception:
+            self._send_json(502, {"ok": False, "error": "upstream_unreachable"})
+            return
+
+        if not isinstance(data, dict):
+            self._send_json(502, {"ok": False, "error": "invalid_upstream_payload"})
+            return
+
+        normalized = _normalize_upstream(data)
+        normalized["workers"] = []
+        normalized.pop("debug", None)
+        self._send_json(200, normalized)
 
 
