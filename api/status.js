@@ -11,6 +11,9 @@ function utcNowIso() {
   return new Date().toISOString();
 }
 
+const FINISH_BUFFER_DAYS = 6;
+const FINISH_BUFFER_MS = FINISH_BUFFER_DAYS * 24 * 60 * 60 * 1000;
+
 function humanEta(hours) {
   if (hours == null || !Number.isFinite(hours) || hours < 0) return "—";
   if (hours < 1) return `~${Math.max(0, Math.floor(hours * 60))}m`;
@@ -24,6 +27,21 @@ function normalizeUpstream(data) {
     const out = { ...data };
     delete out.debug;
     out.workers = [];
+
+    // Apply +6 day buffer to projected finish (and keep ETA consistent).
+    if (out.eta && typeof out.eta === "object") {
+      if (out.eta.projected_finish_at) {
+        const d = new Date(out.eta.projected_finish_at);
+        if (!Number.isNaN(d.getTime())) {
+          out.eta.projected_finish_at = new Date(d.getTime() + FINISH_BUFFER_MS).toISOString();
+        }
+      }
+      if (Number.isFinite(out.eta.eta_hours)) {
+        out.eta.eta_hours = Number(out.eta.eta_hours) + FINISH_BUFFER_DAYS * 24;
+        out.eta.eta_human = humanEta(out.eta.eta_hours);
+      }
+    }
+
     return out;
   }
 
@@ -48,7 +66,7 @@ function normalizeUpstream(data) {
   const nowIso = utcNowIso();
   let projectedFinishAt = null;
   if (Number.isFinite(remainingHours) && remainingHours >= 0) {
-    projectedFinishAt = new Date(Date.now() + remainingHours * 3600 * 1000).toISOString();
+    projectedFinishAt = new Date(Date.now() + remainingHours * 3600 * 1000 + FINISH_BUFFER_MS).toISOString();
   }
 
   let pendingTiles = null;
@@ -73,8 +91,8 @@ function normalizeUpstream(data) {
     velocity: { tiles_per_hour: null },
     health: { state: active ? "good" : "idle" },
     eta: {
-      eta_hours: Number.isFinite(remainingHours) ? Number(remainingHours) : null,
-      eta_human: Number.isFinite(remainingHours) ? humanEta(Number(remainingHours)) : "—",
+      eta_hours: Number.isFinite(remainingHours) ? Number(remainingHours) + FINISH_BUFFER_DAYS * 24 : null,
+      eta_human: Number.isFinite(remainingHours) ? humanEta(Number(remainingHours) + FINISH_BUFFER_DAYS * 24) : "—",
       projected_finish_at: projectedFinishAt,
     },
     workers: [],
