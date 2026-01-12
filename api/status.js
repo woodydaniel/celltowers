@@ -101,12 +101,30 @@ function normalizeUpstream(data) {
 }
 
 module.exports = async (req, res) => {
+  let stage = "start";
   try {
-    const url =
+    const rawUrl =
       (process.env.SCRAPER_STATUS_URL || process.env.CELLMAPPER_API_URL || "").trim();
     const token =
       (process.env.SCRAPER_STATUS_BEARER_TOKEN || process.env.CELLMAPPER_API_TOKEN || "").trim();
     const allowInsecure = (process.env.ALLOW_INSECURE_STATUS_URL || "false").toLowerCase() === "true";
+    const debug = (process.env.DEBUG_PROXY || "").toLowerCase() === "true";
+
+    // Guard: people often paste env vars without newlines, causing concatenation.
+    // Example: "http://.../api/statusCELLMAPPER_API_TOKEN=..."
+    let url = rawUrl;
+    const cutMarkers = [
+      "CELLMAPPER_API_TOKEN=",
+      "SCRAPER_STATUS_BEARER_TOKEN=",
+      "SCRAPER_STATUS_URL=",
+      "ALLOW_INSECURE_STATUS_URL=",
+    ];
+    for (const m of cutMarkers) {
+      const idx = url.indexOf(m);
+      if (idx > 0) {
+        url = url.slice(0, idx).trim();
+      }
+    }
 
     if (!url) {
       res.status(500).json({ ok: false, error: "missing_env", env: "SCRAPER_STATUS_URL|CELLMAPPER_API_URL" });
@@ -117,7 +135,14 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const u = new URL(url);
+    stage = "parse_url";
+    let u;
+    try {
+      u = new URL(url);
+    } catch {
+      res.status(400).json({ ok: false, error: "invalid_url" });
+      return;
+    }
     if (u.protocol !== "https:" && u.protocol !== "http:") {
       res.status(400).json({ ok: false, error: "invalid_url" });
       return;
@@ -127,6 +152,7 @@ module.exports = async (req, res) => {
       return;
     }
 
+    stage = "fetch_upstream";
     const upstreamRes = await fetch(url, {
       method: "GET",
       headers: {
@@ -140,12 +166,20 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const data = await upstreamRes.json();
+    stage = "parse_upstream_json";
+    let data;
+    try {
+      data = await upstreamRes.json();
+    } catch {
+      res.status(502).json({ ok: false, error: "invalid_upstream_json" });
+      return;
+    }
     if (!data || typeof data !== "object") {
       res.status(502).json({ ok: false, error: "invalid_upstream_payload" });
       return;
     }
 
+    stage = "normalize";
     const normalized = normalizeUpstream(data);
     delete normalized.debug;
     normalized.workers = [];
@@ -153,7 +187,13 @@ module.exports = async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     res.status(200).json(normalized);
   } catch (e) {
-    res.status(502).json({ ok: false, error: "proxy_error" });
+    const debug = (process.env.DEBUG_PROXY || "").toLowerCase() === "true";
+    res.status(502).json({
+      ok: false,
+      error: "proxy_error",
+      stage,
+      ...(debug ? { detail: String(e && e.message ? e.message : e) } : {}),
+    });
   }
 };
 
