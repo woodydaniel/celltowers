@@ -14,6 +14,25 @@ function utcNowIso() {
 const FINISH_BUFFER_DAYS = 6;
 const FINISH_BUFFER_MS = FINISH_BUFFER_DAYS * 24 * 60 * 60 * 1000;
 
+function applyExpectedTotals(normalized) {
+  const expectedTotal = Number.parseInt(process.env.EXPECTED_TOTAL_TILES || "", 10);
+  if (!Number.isFinite(expectedTotal) || expectedTotal <= 0) return normalized;
+  if (!normalized || typeof normalized !== "object" || !normalized.progress) return normalized;
+
+  const out = { ...normalized, progress: { ...normalized.progress } };
+  const completed = Number.isFinite(out.progress.completed_tiles) ? Number(out.progress.completed_tiles) : null;
+
+  out.progress.total_tiles = expectedTotal;
+  if (completed != null) {
+    out.progress.pending_tiles = Math.max(0, expectedTotal - Math.trunc(completed));
+    out.progress.completion_percent = expectedTotal > 0 ? (Number(completed) / expectedTotal) * 100 : null;
+  } else {
+    out.progress.pending_tiles = null;
+    out.progress.completion_percent = null;
+  }
+  return out;
+}
+
 function humanEta(hours) {
   if (hours == null || !Number.isFinite(hours) || hours < 0) return "—";
   if (hours < 1) return `~${Math.max(0, Math.floor(hours * 60))}m`;
@@ -42,7 +61,7 @@ function normalizeUpstream(data) {
       }
     }
 
-    return out;
+    return applyExpectedTotals(out);
   }
 
   const ts = (data && (data.timestamp || data.generated_at)) ? String(data.timestamp || data.generated_at) : null;
@@ -180,7 +199,7 @@ module.exports = async (req, res) => {
     }
 
     stage = "normalize";
-    const normalized = normalizeUpstream(data);
+    const normalized = applyExpectedTotals(normalizeUpstream(data));
     delete normalized.debug;
     normalized.workers = [];
 
