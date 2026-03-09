@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
+import shutil
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -350,35 +352,61 @@ class GeoGrid:
         logger.info(f"Generated {len(self.tiles)} tiles")
     
     def _load_progress(self) -> None:
-        """Load progress from file if exists."""
-        if not self.progress_file.exists():
-            return
-        
-        try:
-            with open(self.progress_file, "r") as f:
-                progress_data = json.load(f)
-            
-            # Update tiles with saved progress
-            for tile_id, tile_data in progress_data.get("tiles", {}).items():
-                if tile_id in self.tiles:
-                    self.tiles[tile_id].completed = tile_data.get("completed", False)
-                    self.tiles[tile_id].tower_count = tile_data.get("tower_count", 0)
-                    self.tiles[tile_id].error_count = tile_data.get("error_count", 0)
-                    self.tiles[tile_id].retry_count = tile_data.get("retry_count", 0)
-                    self.tiles[tile_id].deferred = tile_data.get("deferred", False)
-            
-            completed = sum(1 for t in self.tiles.values() if t.completed)
-            deferred = sum(1 for t in self.tiles.values() if t.deferred)
-            logger.info(
-                f"Loaded progress: {completed}/{len(self.tiles)} tiles completed, "
-                f"{deferred} deferred"
-            )
-            
-        except (json.JSONDecodeError, KeyError) as e:
-            logger.warning(f"Failed to load progress file: {e}")
+        """Load progress from file if exists (with fallback to rotated backups)."""
+        for candidate in self._candidate_progress_files():
+            if not candidate.exists():
+                continue
+            try:
+                with open(candidate, "r") as f:
+                    progress_data = json.load(f)
+                self._apply_progress_data(progress_data)
+                if candidate != self.progress_file:
+                    logger.warning(f"Restored progress from backup: {candidate.name}")
+                return
+            except (json.JSONDecodeError, KeyError) as e:
+                logger.warning(f"Failed to load {candidate.name}: {e}")
+
+        # If we get here, there was nothing usable.
+        if self.progress_file.exists():
+            logger.warning("Progress file exists but could not be loaded; starting fresh")
+        return
+
+    def _candidate_progress_files(self) -> list[Path]:
+        """
+        Progress candidates in priority order.
+
+        We keep up to 3 rotated backups:
+        - progress_*.json
+        - progress_*.json.bak
+        - progress_*.json.bak.2
+        - progress_*.json.bak.3
+        """
+        return [
+            self.progress_file,
+            self.progress_file.with_suffix(".json.bak"),
+            self.progress_file.with_suffix(".json.bak.2"),
+            self.progress_file.with_suffix(".json.bak.3"),
+        ]
+
+    def _apply_progress_data(self, progress_data: dict) -> None:
+        """Apply loaded progress data to tiles."""
+        for tile_id, tile_data in progress_data.get("tiles", {}).items():
+            if tile_id in self.tiles:
+                self.tiles[tile_id].completed = tile_data.get("completed", False)
+                self.tiles[tile_id].tower_count = tile_data.get("tower_count", 0)
+                self.tiles[tile_id].error_count = tile_data.get("error_count", 0)
+                self.tiles[tile_id].retry_count = tile_data.get("retry_count", 0)
+                self.tiles[tile_id].deferred = tile_data.get("deferred", False)
+
+        completed = sum(1 for t in self.tiles.values() if t.completed)
+        deferred = sum(1 for t in self.tiles.values() if t.deferred)
+        logger.info(
+            f"Loaded progress: {completed}/{len(self.tiles)} tiles completed, "
+            f"{deferred} deferred"
+        )
     
     def save_progress(self) -> None:
-        """Save current progress to file."""
+        """Save current progress to file (atomic + rotating backups)."""
         progress_data = {
             "total_tiles": len(self.tiles),
             "completed_tiles": sum(1 for t in self.tiles.values() if t.completed),
@@ -396,10 +424,53 @@ class GeoGrid:
         }
         
         self.progress_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.progress_file, "w") as f:
-            json.dump(progress_data, f, indent=2)
-        
-        logger.debug("Progress saved")
+
+        # Rotate backups: .bak.3 (oldest) is dropped, .bak.2 -> .bak.3, .bak -> .bak.2, current -> .bak
+        bak1 = self.progress_file.with_suffix(".json.bak")
+        bak2 = self.progress_file.with_suffix(".json.bak.2")
+        bak3 = self.progress_file.with_suffix(".json.bak.3")
+        try:
+            if bak3.exists():
+                bak3.unlink()
+            if bak2.exists():
+                bak2.replace(bak3)
+            if bak1.exists():
+                bak1.replace(bak2)
+            if self.progress_file.exists():
+                shutil.copy2(self.progress_file, bak1)
+        except Exception as e:
+            logger.warning(f"Failed to rotate progress backups: {e}")
+
+        # Atomic write: write to tmp then replace.
+        #
+        # Use a per-process tmp name to avoid leaving a stale `.tmp` behind if a
+        # SIGTERM arrives mid-write. Also clean up any older stale tmp files.
+        for stale in self.progress_file.parent.glob(f"{self.progress_file.name}.tmp*"):
+            try:
+                stale.unlink()
+            except Exception:
+                pass
+
+        tmp = self.progress_file.with_suffix(f".json.tmp.{os.getpid()}")
+        try:
+            with open(tmp, "w") as f:
+                json.dump(progress_data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # Validate temp file is valid JSON before replacing the real file.
+            with open(tmp, "r") as f:
+                json.load(f)
+
+            tmp.replace(self.progress_file)
+            logger.debug("Progress saved (atomic)")
+        except Exception as e:
+            logger.error(f"Progress save failed; keeping previous file. Error: {e}")
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except Exception:
+                pass
     
     def get_pending_tiles(self, randomize: bool = False) -> Generator[Tile, None, None]:
         """
@@ -442,16 +513,22 @@ class GeoGrid:
                 self.save_progress()
     
     def reset_progress(self) -> None:
-        """Reset all progress."""
+        """Reset all progress (in-memory only, does NOT delete progress file).
+        
+        WARNING: This only resets the in-memory state. The progress file is
+        intentionally preserved to prevent accidental data loss. If you truly
+        need to start fresh, manually delete the progress file.
+        """
         for tile in self.tiles.values():
             tile.completed = False
             tile.tower_count = 0
             tile.error_count = 0
         
-        if self.progress_file.exists():
-            self.progress_file.unlink()
+        # NOTE: Previously this deleted the progress file, which caused catastrophic
+        # data loss when workers restarted. Now we only reset in-memory state.
+        # The file is preserved intentionally.
         
-        logger.info("Progress reset")
+        logger.info("Progress reset (in-memory only, file preserved)")
     
     def get_stats(self) -> dict:
         """Get grid statistics."""

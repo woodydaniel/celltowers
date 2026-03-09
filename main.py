@@ -28,7 +28,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -58,6 +58,15 @@ class ShutdownHandler:
                 f"Received {sig_name} - finishing current tile and saving progress..."
             )
             self.shutdown_requested = True
+            # Best-effort: persist progress immediately so a rapid stop/restart
+            # doesn't risk losing recent state.
+            global _shutdown_save_progress
+            if _shutdown_save_progress is not None:
+                try:
+                    _shutdown_save_progress()
+                    logging.getLogger(__name__).info("Progress saved on signal")
+                except Exception as e:
+                    logging.getLogger(__name__).error(f"Failed to save progress on signal: {e}")
         else:
             logging.getLogger(__name__).warning(
                 f"Received {sig_name} again - forcing immediate exit"
@@ -72,6 +81,9 @@ class ShutdownHandler:
 
 # Global shutdown handler instance
 shutdown_handler = ShutdownHandler()
+
+# Optional callback set after GeoGrid is created, used for best-effort signal-time saves.
+_shutdown_save_progress: Optional[Callable[[], None]] = None
 
 from config.settings import (
     CONFIG_DIR,
@@ -91,7 +103,7 @@ from config.settings import (
     STALL_THRESHOLD_SEC,
 )
 from scraper.api_client import CellMapperClient, CaptchaRequiredError
-from scraper.geo_utils import GeoGrid, USBounds, estimate_scrape_time, DeferQueue
+from scraper.geo_utils import Bounds, GeoGrid, USBounds, estimate_scrape_time, DeferQueue
 from scraper.parser import TowerParser, get_provider_name
 from scraper.storage import DataStorage
 from scraper.proxy_manager import ProxyManager
@@ -251,6 +263,119 @@ def get_carrier_codes(carrier: str, config: dict) -> list[tuple[int, int]]:
     for entry in carrier_data.get("mcc_mnc", []):
         codes.append((entry["mcc"], entry["mnc"]))
     return codes
+
+
+MAX_SUBTILE_DEPTH = 3  # 0.25 -> 0.125 -> 0.0625 -> 0.03125
+
+
+async def _fetch_subtiles(
+    client: "CellMapperClient",
+    parser: "TowerParser",
+    storage: "DataStorage",
+    bounds: "Bounds",
+    mcc: int,
+    mnc: int,
+    tech: str,
+    tile_id: str,
+    session_pool=None,
+    session=None,
+    metrics=None,
+    depth: int = 1,
+) -> int:
+    """
+    Subdivide a tile that returned hasMore=True and fetch each sub-tile.
+
+    Splits the parent bounds into 4 quadrants (halving lat and lon) and fetches
+    each one.  If a sub-tile itself returns hasMore, recurse up to
+    MAX_SUBTILE_DEPTH levels.
+
+    Returns the number of NEW towers written to storage from all sub-tiles.
+    """
+    if depth > MAX_SUBTILE_DEPTH:
+        logger.warning(
+            f"Tile {tile_id} still has hasMore at subdivision depth {depth} "
+            f"(bounds {bounds}) — skipping further subdivision"
+        )
+        return 0
+
+    mid_lat = (bounds.north + bounds.south) / 2
+    mid_lon = (bounds.east + bounds.west) / 2
+
+    quadrants = [
+        Bounds(north=bounds.north, south=mid_lat, east=mid_lon,     west=bounds.west),   # NW
+        Bounds(north=bounds.north, south=mid_lat, east=bounds.east,  west=mid_lon),       # NE
+        Bounds(north=mid_lat,      south=bounds.south, east=mid_lon, west=bounds.west),   # SW
+        Bounds(north=mid_lat,      south=bounds.south, east=bounds.east, west=mid_lon),   # SE
+    ]
+
+    total_written = 0
+
+    for qi, sub_bounds in enumerate(quadrants):
+        sub_label = f"{tile_id}/d{depth}q{qi}"
+        logger.info(
+            f"Subtile {sub_label}: fetching {tech} MCC={mcc} MNC={mnc} "
+            f"bounds=({sub_bounds.south:.4f},{sub_bounds.west:.4f})-"
+            f"({sub_bounds.north:.4f},{sub_bounds.east:.4f})"
+        )
+
+        try:
+            response = await client.get_towers(
+                mcc=mcc, mnc=mnc,
+                bounds=sub_bounds.to_dict(),
+                technology=tech,
+            )
+
+            if metrics:
+                metrics.record_api_result(
+                    success=bool(getattr(response, "success", False)),
+                    request_time_sec=float(getattr(response, "request_time", 0.0) or 0.0),
+                    error_code=str(getattr(response, "error_code", "") or ""),
+                )
+
+            if session_pool and session:
+                session_pool.mark_result(session, response)
+
+            if not response.success:
+                logger.warning(f"Subtile {sub_label} failed: {response.error}")
+                continue
+
+            if response.data:
+                records, sub_has_more = parser.parse_towers_response(
+                    response.data, mcc, mnc, tech
+                )
+                written = storage.write_many(records)
+                total_written += written
+                logger.info(f"Subtile {sub_label}: {written} new towers (hasMore={sub_has_more})")
+
+                if sub_has_more:
+                    deeper = await _fetch_subtiles(
+                        client=client,
+                        parser=parser,
+                        storage=storage,
+                        bounds=sub_bounds,
+                        mcc=mcc,
+                        mnc=mnc,
+                        tech=tech,
+                        tile_id=tile_id,
+                        session_pool=session_pool,
+                        session=session,
+                        metrics=metrics,
+                        depth=depth + 1,
+                    )
+                    total_written += deeper
+
+        except CaptchaRequiredError:
+            logger.warning(f"Subtile {sub_label}: CAPTCHA during subdivision — skipping quadrant")
+            continue
+        except Exception as e:
+            logger.error(f"Subtile {sub_label}: unexpected error — {e}")
+            continue
+
+    logger.info(
+        f"Tile {tile_id} subdivision depth={depth}: "
+        f"{total_written} new towers recovered from 4 sub-tiles"
+    )
+    return total_written
 
 
 async def scrape_carrier(
@@ -458,11 +583,22 @@ async def scrape_carrier(
                             consecutive_failures = 0
                             warning_sent = False
                             
-                            # Log if there's more data (might need smaller tiles)
                             if has_more:
-                                logger.warning(
-                                    f"Tile {tile.id} has more data - consider smaller grid size"
+                                sub_written = await _fetch_subtiles(
+                                    client=client,
+                                    parser=parser,
+                                    storage=storage,
+                                    bounds=tile.bounds,
+                                    mcc=mcc,
+                                    mnc=mnc,
+                                    tech=tech,
+                                    tile_id=tile.id,
+                                    session_pool=session_pool,
+                                    session=session,
+                                    metrics=metrics,
                                 )
+                                tile_towers += sub_written
+                                stats["towers_found"] += sub_written
                         else:
                             if response.error:
                                 logger.warning(
@@ -654,13 +790,30 @@ async def scrape_carrier(
                         session_pool.mark_result(session, response)
                     
                     if response.success and response.data:
-                        records, _ = parser.parse_towers_response(
+                        records, has_more = parser.parse_towers_response(
                             response.data, mcc, mnc, tech
                         )
                         written = storage.write_many(records)
                         tile_towers += written
                         stats["towers_found"] += written
                         stats["tiles_recovered"] += 1
+
+                        if has_more:
+                            sub_written = await _fetch_subtiles(
+                                client=client,
+                                parser=parser,
+                                storage=storage,
+                                bounds=tile.bounds,
+                                mcc=mcc,
+                                mnc=mnc,
+                                tech=tech,
+                                tile_id=tile.id,
+                                session_pool=session_pool,
+                                session=session,
+                                metrics=metrics,
+                            )
+                            tile_towers += sub_written
+                            stats["towers_found"] += sub_written
                 
                 grid.mark_completed(tile.id, tower_count=tile_towers)
                 stats["tiles_processed"] += 1
@@ -751,6 +904,10 @@ async def run_scraper(
             # Full US grid
             grid = GeoGrid.for_us()
             logger.info(f"Full US mode: {len(grid.tiles)} tiles")
+
+    # Allow SIGTERM handler to save progress immediately (best-effort)
+    global _shutdown_save_progress
+    _shutdown_save_progress = grid.save_progress
 
     # Apply run tag for regional scaling (affects progress file naming)
     if run_tag:
@@ -919,9 +1076,10 @@ async def run_scraper(
                     overall_stats["total_towers"] += carrier_stats["towers_found"]
                     overall_stats["total_errors"] += carrier_stats["errors"]
                     
-                    # Reset grid progress for next carrier
-                    if not test_mode:
-                        grid.reset_progress()
+                    # NOTE: Do NOT reset progress here - each worker has its own carrier-specific
+                    # progress file. Resetting would delete the file and lose all progress.
+                    # The old code called grid.reset_progress() here which was catastrophic
+                    # for single-carrier workers with restart policies.
                     
                     carrier_index += 1
                     
@@ -962,15 +1120,34 @@ async def run_scraper(
     logger.info(f"Total errors: {overall_stats['total_errors']}")
     logger.info("=" * 60)
     
-    # Send completion notification email
-    notifier.update_progress(
-        tiles=len(grid.tiles),
-        towers=overall_stats['total_towers']
+    # Send completion notification email (with false-completion guard)
+    # Guard: Don't send completion email if run looks suspicious (likely progress corruption)
+    tiles_processed_this_run = sum(
+        cs.get("tiles_processed", 0) for cs in overall_stats.get("carriers_processed", [])
     )
-    notifier.send_completion(
-        duration_hours=duration.total_seconds() / 3600,
-        carrier=single_carrier or "all",
+    duration_seconds = duration.total_seconds()
+    is_suspicious_completion = (
+        duration_seconds < 300  # Less than 5 minutes
+        and overall_stats['total_towers'] == 0
+        and tiles_processed_this_run <= 1
     )
+    
+    if is_suspicious_completion:
+        logger.warning(
+            f"SUSPICIOUS COMPLETION DETECTED - NOT sending email. "
+            f"Duration={duration_seconds:.1f}s, towers={overall_stats['total_towers']}, "
+            f"tiles_processed={tiles_processed_this_run}. "
+            f"This may indicate progress file corruption."
+        )
+    else:
+        notifier.update_progress(
+            tiles=len(grid.tiles),
+            towers=overall_stats['total_towers']
+        )
+        notifier.send_completion(
+            duration_hours=duration.total_seconds() / 3600,
+            carrier=single_carrier or "all",
+        )
     
     # Clean up session pool and log Hardening v2 stats
     if session_pool:
