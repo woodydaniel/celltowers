@@ -158,31 +158,36 @@ async def search_towers(
     offset = (page - 1) * per_page
 
     async with _get_conn() as conn:
-        # FTS path
-        if filters.fts_query and not any([
-            filters.state, filters.city, filters.lat,
-            filters.tower_id, filters.zipcode,
-            filters.generation, filters.site_type,
-            filters.active is not None, filters.rural is not None,
-        ]):
+        if filters.fts_query:
+            # FTS path — optionally combined with structured WHERE clauses.
+            # _build_where ignores fts_query, so it yields only the structured predicates.
             fts_q = filters.fts_query.strip() + "*"
-            count_sql = """
-                SELECT count(*) FROM towers
-                WHERE id IN (SELECT rowid FROM towers_fts WHERE towers_fts MATCH ?)
-            """
-            cur = await conn.execute(count_sql, [fts_q])
+            where_extra, params_extra = _build_where(filters)
+
+            if where_extra == "1=1":
+                # Pure address FTS — no other structured filters
+                full_where = "id IN (SELECT rowid FROM towers_fts WHERE towers_fts MATCH ?)"
+                all_params: list[Any] = [fts_q]
+            else:
+                # Address FTS combined with city/state/generation/etc. filters
+                full_where = (
+                    "id IN (SELECT rowid FROM towers_fts WHERE towers_fts MATCH ?)"
+                    f" AND {where_extra}"
+                )
+                all_params = [fts_q] + params_extra
+
+            count_sql = f"SELECT count(*) FROM towers WHERE {full_where}"
+            cur = await conn.execute(count_sql, all_params)
             total = (await cur.fetchone())[0]
 
             data_sql = f"""
-                SELECT t.* FROM towers t
-                JOIN towers_fts f ON f.rowid = t.id
-                WHERE towers_fts MATCH ?
-                ORDER BY t.{sort_by} {sort_order}
+                SELECT * FROM towers WHERE {full_where}
+                ORDER BY {sort_by} {sort_order}
                 LIMIT ? OFFSET ?
             """
-            cur = await conn.execute(data_sql, [fts_q, per_page, offset])
+            cur = await conn.execute(data_sql, all_params + [per_page, offset])
         else:
-            # Structured query path
+            # Structured-only path
             where, params = _build_where(filters)
             count_sql = f"SELECT count(*) FROM towers WHERE {where}"
             cur = await conn.execute(count_sql, params)

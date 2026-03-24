@@ -93,8 +93,36 @@ PROVIDER_KEYWORDS: dict[str, str] = {
     "vzw": "Verizon",
 }
 
-STOP_WORDS = {"towers", "tower", "in", "near", "around", "show", "find", "search",
-              "me", "all", "the", "for", "and", "with", "of", "a", "an"}
+# Street address suffixes used for address detection.
+# When one of these is found in a query, the preceding street name + suffix
+# are extracted as an FTS address query instead of being fuzzy-matched as city names.
+ADDRESS_SUFFIXES: frozenset[str] = frozenset({
+    "street", "st",
+    "avenue", "ave",
+    "boulevard", "blvd",
+    "road", "rd",
+    "drive", "dr",
+    "lane", "ln",
+    "way",
+    "place", "pl",
+    "court", "ct",
+    "circle", "cir",
+    "parkway", "pkwy",
+    "terrace", "ter",
+    "highway", "hwy",
+    "pike",
+    "trail", "trl",
+})
+
+STOP_WORDS = {
+    "towers", "tower", "in", "near", "around", "show", "find", "search",
+    "me", "all", "the", "for", "and", "with", "of", "a", "an",
+    # Full-form address suffixes: won't appear as real city names, safe to exclude
+    # from city/state fuzzy matching. Short abbreviations (st, rd, dr…) are kept
+    # out of STOP_WORDS to preserve multi-word city matches like "St. Louis".
+    "street", "avenue", "boulevard", "road", "drive", "lane",
+    "place", "court", "circle", "parkway", "terrace", "highway", "trail", "pike",
+}
 
 COORD_RE = re.compile(
     r"(-?\d{1,3}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)"
@@ -105,6 +133,14 @@ COORD_RE = re.compile(
 TOWER_ID_RE = re.compile(r"\b(\d{3}_\d{3}_\d+)\b")
 SITE_ID_RE = re.compile(r"\b(\d{4,8})\b")
 ZIPCODE_RE = re.compile(r"\b(\d{5})\b")
+
+# Prefixes users may type before a numeric tower/site ID that should be stripped
+# so the number is always treated as a site ID, not a zip code.
+# Ordered longest-first so "site id" is removed before "site" or "id".
+ID_PREFIX_RE = re.compile(
+    r"\b(?:site\s+id|site\s+ID|site\s+Id|enb\s+id|enb\s+ID|enb|site|tower\s+id|tower\s+ID)\s*:?\s*",
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -175,22 +211,41 @@ class QueryParser:
             filters.tower_id = tid_match.group(1)
             text = text.replace(tid_match.group(0), " ")
 
-        # 3. Zipcode (5 digits that aren't already consumed)
+        # 3 & 4. Numeric detection: site ID (4-8 digits) vs zipcode (exactly 5 digits).
+        # Strip ID prefix keywords first (e.g. "ID", "eNB", "site id") so they don't
+        # get mistaken for state abbreviations (ID = Idaho) and force zipcode mode.
         if not filters.tower_id:
-            zip_match = ZIPCODE_RE.search(text)
-            if zip_match:
-                filters.zipcode = zip_match.group(1)
-                text = text.replace(zip_match.group(0), " ")
+            text, n_subs = ID_PREFIX_RE.subn(" ", text)
+            # Also strip a bare "id" or "ID" token that immediately precedes digits
+            if re.search(r'\bid\s+\d{4,8}\b', text, re.IGNORECASE):
+                text = re.sub(r'\bid\s+', ' ', text, flags=re.IGNORECASE)
 
-        # 4. Site ID (bare numeric id, 4-8 digits, if no other numeric match)
-        if not filters.tower_id and not filters.zipcode:
+        # 5-digit numbers are ambiguous. Default to site ID unless there is explicit
+        # location context (state name/abbreviation) elsewhere in the query, in which
+        # case the number is more likely a zip code.
+        if not filters.tower_id:
             sid_match = SITE_ID_RE.search(text)
             if sid_match:
-                filters.tower_id = sid_match.group(1)
+                matched_num = sid_match.group(1)
+                is_five_digit = len(matched_num) == 5
+                if is_five_digit:
+                    # Check for state context in the rest of the query
+                    other_text = text.replace(sid_match.group(0), " ").strip()
+                    other_lower = other_text.lower()
+                    has_state_context = (
+                        any(abbrev in other_text.upper().split() for abbrev in ALL_ABBREVS)
+                        or any(name in other_lower for name in US_STATES)
+                    )
+                    if has_state_context:
+                        filters.zipcode = matched_num
+                    else:
+                        filters.tower_id = matched_num
+                else:
+                    filters.tower_id = matched_num
                 text = text.replace(sid_match.group(0), " ")
 
-        # If we have a tower/site ID, that's usually the whole query — return early
-        if filters.tower_id and len(text.strip()) <= 3:
+        # If we have a tower/site ID or zipcode as the whole query — return early
+        if (filters.tower_id or filters.zipcode) and len(text.strip()) <= 3:
             return filters, ambiguous
 
         text_lower = text.lower()
@@ -233,6 +288,16 @@ class QueryParser:
                 text_lower = text_lower.replace(kw, " ", 1)
                 break
 
+        # 8c. Address detection — extract street address fragment before city/state matching.
+        # Prevents address words (e.g. "ellery", "street") from fuzzy-matching city names
+        # (e.g. "ellery" → Keller TX, "street" → Street MD).
+        # The extracted address is routed to fts_query; remaining tokens (city, state)
+        # continue through normal location extraction below.
+        if not filters.fts_query:
+            _address_tokens, text_lower = self._extract_address_tokens(text_lower)
+            if _address_tokens:
+                filters.fts_query = " ".join(_address_tokens)
+
         # 9. Apply pre-resolved disambiguation choices
         if "state" in resolved:
             filters.state = resolved["state"]
@@ -253,8 +318,9 @@ class QueryParser:
         )
 
         # 11. If no structured match found and non-trivial text remains → FTS fallback
+        # Don't overwrite fts_query already set by address detection (step 8c).
         leftover = " ".join(t for t in remaining if t not in STOP_WORDS)
-        if leftover and not any([
+        if leftover and not filters.fts_query and not any([
             filters.state, filters.city, filters.lat,
             filters.tower_id, filters.zipcode
         ]):
@@ -269,6 +335,58 @@ class QueryParser:
     def _clean_tokens(self, text: str) -> list[str]:
         text = re.sub(r"[^\w\s\-]", " ", text)
         return [t for t in text.split() if t]
+
+    def _extract_address_tokens(self, text: str) -> tuple[list[str], str]:
+        """
+        Find the first address suffix token in `text` and extract the street address
+        fragment: the suffix plus any immediately preceding non-stop-word tokens
+        (the street name, and optionally a house number).
+
+        Returns (address_tokens, text_with_address_removed).
+        Returns ([], text) if no suffix is found or no street name precedes it.
+
+        Examples:
+          "ellery street brooklyn ny"  → (["ellery", "street"], "brooklyn ny")
+          "157 ellery st"              → (["157", "ellery", "st"], "")
+          "happy jack rd"              → (["happy", "jack", "rd"], "")
+          "brooklyn ny"                → ([], "brooklyn ny")   # no suffix
+          "street"                     # bare suffix with no name → ([], …)
+        """
+        tokens = self._clean_tokens(text)
+
+        # Find the index of the first address suffix token
+        suffix_idx = next(
+            (i for i, tok in enumerate(tokens) if tok in ADDRESS_SUFFIXES),
+            None,
+        )
+        if suffix_idx is None:
+            return [], text
+
+        # Walk backwards from just before the suffix to find where the address starts.
+        # Stop at stop words (e.g. "near", "in") or the beginning of the token list.
+        address_start = 0
+        for i in range(suffix_idx - 1, -1, -1):
+            if tokens[i] in STOP_WORDS:
+                address_start = i + 1
+                break
+
+        # Street name tokens (excluding the suffix itself).
+        # The suffix is intentionally dropped from the FTS query: DB addresses use
+        # abbreviated forms ("St", "Ave", "Blvd") while users type full words
+        # ("street", "avenue"), so including the suffix would cause FTS misses.
+        # The street name alone ("ellery", "happy jack") is sufficient to find matches.
+        name_tokens = tokens[address_start: suffix_idx]
+
+        # Require at least one street name token before the suffix.
+        # Prevents a bare suffix like "st" with nothing before it from triggering
+        # address mode.
+        if not name_tokens:
+            return [], text
+
+        # Reconstruct text without all the address tokens (name + suffix)
+        remaining_tokens = tokens[:address_start] + tokens[suffix_idx + 1:]
+        remaining_text = " ".join(remaining_tokens)
+        return name_tokens, remaining_text
 
     def _extract_location(
         self,
