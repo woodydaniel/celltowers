@@ -88,13 +88,32 @@ export interface Stats {
 
 const BASE = import.meta.env.DEV ? '' : ''
 
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+const TOKEN_KEY = 'ct_token'
+
+export const auth = {
+  getToken: (): string | null => sessionStorage.getItem(TOKEN_KEY),
+  setToken: (t: string) => sessionStorage.setItem(TOKEN_KEY, t),
+  clearToken: () => sessionStorage.removeItem(TOKEN_KEY),
+  isLoggedIn: (): boolean => !!sessionStorage.getItem(TOKEN_KEY),
+}
+
+function authHeaders(): HeadersInit {
+  const token = auth.getToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+function handle401(res: Response) {
+  if (res.status === 401) {
+    auth.clearToken()
+    window.location.reload()
+  }
+}
+
+async function post<T>(path: string, body: unknown, requiresAuth = true): Promise<T> {
+  const headers: HeadersInit = { 'Content-Type': 'application/json', ...(requiresAuth ? authHeaders() : {}) }
+  const res = await fetch(`${BASE}${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
   if (!res.ok) {
+    handle401(res)
     const text = await res.text()
     throw new Error(`API error ${res.status}: ${text}`)
   }
@@ -110,8 +129,9 @@ async function get<T>(path: string, params?: Record<string, string | number | bo
       }
     }
   }
-  const res = await fetch(url.toString())
+  const res = await fetch(url.toString(), { headers: authHeaders() })
   if (!res.ok) {
+    handle401(res)
     const text = await res.text()
     throw new Error(`API error ${res.status}: ${text}`)
   }
@@ -119,6 +139,11 @@ async function get<T>(path: string, params?: Record<string, string | number | bo
 }
 
 export const api = {
+  async login(email: string, password: string): Promise<void> {
+    const res = await post<{ access_token: string }>('/api/login', { email, password }, false)
+    auth.setToken(res.access_token)
+  },
+
   search(req: SearchRequest): Promise<SearchResponse> {
     return post('/api/search', req)
   },

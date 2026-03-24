@@ -9,11 +9,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 import database as db
+from auth import LoginRequest, LoginResponse, create_access_token, require_auth, validate_login
 from models import (
     ParsedFilters,
     SearchRequest,
@@ -49,8 +50,17 @@ app.add_middleware(
 # API routes
 # ---------------------------------------------------------------------------
 
+@app.post("/api/login", response_model=LoginResponse)
+async def login(req: LoginRequest):
+    """Authenticates a user and returns a JWT token."""
+    if not validate_login(req.email, req.password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    token = create_access_token(req.email.lower().strip())
+    return LoginResponse(access_token=token)
+
+
 @app.post("/api/search", response_model=SearchResponse)
-async def smart_search(req: SearchRequest):
+async def smart_search(req: SearchRequest, _: str = Depends(require_auth)):
     """Natural language search endpoint."""
     filters, ambiguous = parser.parse(req.query, resolved=req.resolved)
 
@@ -88,6 +98,7 @@ async def smart_search(req: SearchRequest):
 
 @app.get("/api/towers")
 async def structured_search(
+    _auth: str = Depends(require_auth),
     state: Optional[str] = None,
     city: Optional[str] = None,
     generation: Optional[str] = None,
@@ -138,7 +149,7 @@ async def structured_search(
 
 
 @app.get("/api/suggest")
-async def suggest(q: str = Query("", min_length=1)):
+async def suggest(q: str = Query("", min_length=1), _: str = Depends(require_auth)):
     """Autocomplete suggestions for the search bar."""
     q_lower = q.lower().strip()
     suggestions: list[str] = []
@@ -173,19 +184,20 @@ async def suggest(q: str = Query("", min_length=1)):
 
 
 @app.get("/api/filters")
-async def get_filters():
+async def get_filters(_: str = Depends(require_auth)):
     """Returns distinct values for UI filter dropdowns."""
     return await db.get_distinct_values()
 
 
 @app.get("/api/stats")
-async def get_stats():
+async def get_stats(_: str = Depends(require_auth)):
     """Returns dataset statistics."""
     return await db.get_stats()
 
 
 @app.get("/api/towers/export")
 async def export_csv(
+    _auth: str = Depends(require_auth),
     state: Optional[str] = None,
     city: Optional[str] = None,
     generation: Optional[str] = None,

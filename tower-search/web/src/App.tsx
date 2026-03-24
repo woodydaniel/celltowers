@@ -1,13 +1,24 @@
 import { useEffect, useState } from 'react'
-import { Antenna, Radio, Loader2 } from 'lucide-react'
+import { Antenna, Radio, Loader2, LogOut } from 'lucide-react'
 import { SmartSearchBar } from '@/components/SmartSearchBar'
 import { DisambiguationCard } from '@/components/DisambiguationCard'
 import { StatsBar } from '@/components/StatsBar'
 import { ResultsTable } from '@/components/ResultsTable'
+import { LoginPage } from '@/components/LoginPage'
 import { useTowerSearch } from '@/hooks/useTowerSearch'
-import { api } from '@/lib/api'
+import { api, auth } from '@/lib/api'
 
 export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(auth.isLoggedIn())
+
+  if (!isLoggedIn) {
+    return <LoginPage onLogin={() => setIsLoggedIn(true)} />
+  }
+
+  return <MainApp onLogout={() => { auth.clearToken(); setIsLoggedIn(false) }} />
+}
+
+function MainApp({ onLogout }: { onLogout: () => void }) {
   const {
     state,
     search,
@@ -33,7 +44,7 @@ export default function App() {
     <div className="min-h-screen flex flex-col">
       {/* Header */}
       <header className="sticky top-0 z-30 border-b border-border/40 bg-background/80 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg bg-primary/20">
               <Radio className="h-5 w-5 text-primary" />
@@ -45,6 +56,14 @@ export default function App() {
               </p>
             </div>
           </div>
+          <button
+            onClick={onLogout}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            title="Sign out"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            Sign out
+          </button>
         </div>
       </header>
 
