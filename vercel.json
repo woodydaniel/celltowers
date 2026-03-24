@@ -1,6 +1,8 @@
 {
-  "buildCommand": "cd tower-search/web && corepack enable && corepack prepare pnpm@9.12.0 --activate && pnpm install --frozen-lockfile && pnpm build",
-  "outputDirectory": "tower-search/web/dist",
+  "rootDirectory": "tower-search/web",
+  "buildCommand": "pnpm build",
+  "installCommand": "pnpm install",
+  "outputDirectory": "dist",
   "framework": null,
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
