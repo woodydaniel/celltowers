@@ -86,7 +86,9 @@ export interface Stats {
   site_types: Record<string, number>
 }
 
-const BASE = import.meta.env.DEV ? '' : ''
+// In dev: relative (proxied by Vite to localhost:8000)
+// In prod: set VITE_API_BASE_URL to your Railway backend URL e.g. https://celltowers-api.up.railway.app
+const BASE: string = import.meta.env.VITE_API_BASE_URL ?? ''
 
 const TOKEN_KEY = 'ct_token'
 

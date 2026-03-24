@@ -1,0 +1,8 @@
+{
+  "buildCommand": "cd tower-search/web && npm install -g pnpm && pnpm install && pnpm build",
+  "outputDirectory": "tower-search/web/dist",
+  "framework": null,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
