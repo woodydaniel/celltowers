@@ -265,7 +265,7 @@ def get_carrier_codes(carrier: str, config: dict) -> list[tuple[int, int]]:
     return codes
 
 
-MAX_SUBTILE_DEPTH = 3  # 0.25 -> 0.125 -> 0.0625 -> 0.03125
+MAX_SUBTILE_DEPTH = int(os.environ.get("MAX_SUBTILE_DEPTH", "6"))
 
 
 async def _fetch_subtiles(

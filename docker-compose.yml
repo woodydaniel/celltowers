@@ -50,7 +50,7 @@ services:
       - CAPTCHA_PROVIDER=${CAPTCHA_PROVIDER:-capmonster}
       - CAPTCHA_API_KEY=${CAPTCHA_API_KEY:-}
       - HARVEST_PROXY=${HARVEST_PROXY:-}
-      - HARVEST_PROXY_FILE=${HARVEST_PROXY_FILE:-config/proxies_tmobile_west.txt}
+      - HARVEST_PROXY_FILE=${HARVEST_PROXY_FILE:-config/proxies_webshare_20.txt}
       # Day-1: prefer real browser cookies (Playwright) + stealth patches.
       - HARVEST_ENGINE=${HARVEST_ENGINE:-playwright}
       - PLAYWRIGHT_UA=${PLAYWRIGHT_UA:-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36}
@@ -70,6 +70,8 @@ services:
       - TARGET_POOL_SIZE=${TARGET_POOL_SIZE:-20}
       # Prefer lightweight harvest URL; override with HARVEST_URL if needed.
       - HARVEST_URL=${HARVEST_URL:-https://www.cellmapper.net/}
+      # Allow workers more time between tile completions before pausing minting (sub-tile mode needs longer)
+      - HARVESTER_WORKER_STALL_THRESHOLD_SEC=${HARVESTER_WORKER_STALL_THRESHOLD_SEC:-7200}
     command: ["python", "scripts/harvest_cookies.py"]
     deploy:
       replicas: 3
@@ -103,8 +105,8 @@ services:
       - USE_TLS_CLIENT=true
       - TLS_CLIENT_IDENTIFIER=${TLS_CLIENT_IDENTIFIER:-chrome_125}
       # Throttle workers to reduce NEED_RECAPTCHA + cookie churn
-      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-20.0}
-      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-30.0}
+      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-7.0}
+      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-10.0}
       - STRICT_REDIS_POOL=true
       - COOKIE_POOL_WAIT_TIMEOUT_SECONDS=0
       - REQUIRED_COOKIES=${REQUIRED_COOKIES:-6}
@@ -124,6 +126,9 @@ services:
       - python
       - main.py
       - --auto-refresh
+      - --proxies
+      - --proxy-file
+      - config/proxies_webshare_20.txt
       - --carrier
       - tmobile
       - --bounds
@@ -132,7 +137,7 @@ services:
       - "24.396308"
       - "-96.0"
       - --run-tag
-      - west
+      - rescrub3west
       - --randomize
       - --format
       - jsonl
@@ -160,8 +165,8 @@ services:
       - USE_TLS_CLIENT=true
       - TLS_CLIENT_IDENTIFIER=${TLS_CLIENT_IDENTIFIER:-chrome_125}
       # Throttle workers to reduce NEED_RECAPTCHA + cookie churn
-      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-20.0}
-      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-30.0}
+      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-7.0}
+      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-10.0}
       - STRICT_REDIS_POOL=true
       - COOKIE_POOL_WAIT_TIMEOUT_SECONDS=0
       - REQUIRED_COOKIES=${REQUIRED_COOKIES:-6}
@@ -178,6 +183,9 @@ services:
       - python
       - main.py
       - --auto-refresh
+      - --proxies
+      - --proxy-file
+      - config/proxies_webshare_20.txt
       - --carrier
       - tmobile
       - --bounds
@@ -186,7 +194,7 @@ services:
       - "24.396308"
       - "-66.934570"
       - --run-tag
-      - east
+      - rescrub3east
       - --randomize
       - --format
       - jsonl
@@ -214,8 +222,8 @@ services:
       - USE_TLS_CLIENT=true
       - TLS_CLIENT_IDENTIFIER=${TLS_CLIENT_IDENTIFIER:-chrome_125}
       # Throttle workers to reduce NEED_RECAPTCHA + cookie churn
-      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-20.0}
-      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-30.0}
+      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-7.0}
+      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-10.0}
       - STRICT_REDIS_POOL=true
       - COOKIE_POOL_WAIT_TIMEOUT_SECONDS=0
       - REQUIRED_COOKIES=${REQUIRED_COOKIES:-6}
@@ -232,6 +240,9 @@ services:
       - python
       - main.py
       - --auto-refresh
+      - --proxies
+      - --proxy-file
+      - config/proxies_webshare_20.txt
       - --carrier
       - att
       - --bounds
@@ -240,7 +251,7 @@ services:
       - "24.396308"
       - "-96.0"
       - --run-tag
-      - west
+      - rescrub3west
       - --randomize
       - --format
       - jsonl
@@ -268,8 +279,8 @@ services:
       - USE_TLS_CLIENT=true
       - TLS_CLIENT_IDENTIFIER=${TLS_CLIENT_IDENTIFIER:-chrome_125}
       # Throttle workers to reduce NEED_RECAPTCHA + cookie churn
-      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-20.0}
-      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-30.0}
+      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-7.0}
+      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-10.0}
       - STRICT_REDIS_POOL=true
       - COOKIE_POOL_WAIT_TIMEOUT_SECONDS=0
       - REQUIRED_COOKIES=${REQUIRED_COOKIES:-6}
@@ -286,6 +297,9 @@ services:
       - python
       - main.py
       - --auto-refresh
+      - --proxies
+      - --proxy-file
+      - config/proxies_webshare_20.txt
       - --carrier
       - att
       - --bounds
@@ -294,7 +308,7 @@ services:
       - "24.396308"
       - "-66.934570"
       - --run-tag
-      - east
+      - rescrub3east
       - --randomize
       - --format
       - jsonl
@@ -322,8 +336,8 @@ services:
       - USE_TLS_CLIENT=true
       - TLS_CLIENT_IDENTIFIER=${TLS_CLIENT_IDENTIFIER:-chrome_125}
       # Throttle workers to reduce NEED_RECAPTCHA + cookie churn
-      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-20.0}
-      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-30.0}
+      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-7.0}
+      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-10.0}
       - STRICT_REDIS_POOL=true
       - COOKIE_POOL_WAIT_TIMEOUT_SECONDS=0
       - REQUIRED_COOKIES=${REQUIRED_COOKIES:-6}
@@ -340,6 +354,9 @@ services:
       - python
       - main.py
       - --auto-refresh
+      - --proxies
+      - --proxy-file
+      - config/proxies_webshare_20.txt
       - --carrier
       - verizon
       - --bounds
@@ -348,7 +365,7 @@ services:
       - "24.396308"
       - "-96.0"
       - --run-tag
-      - west
+      - rescrub3west
       - --randomize
       - --format
       - jsonl
@@ -376,8 +393,8 @@ services:
       - USE_TLS_CLIENT=true
       - TLS_CLIENT_IDENTIFIER=${TLS_CLIENT_IDENTIFIER:-chrome_125}
       # Throttle workers to reduce NEED_RECAPTCHA + cookie churn
-      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-20.0}
-      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-30.0}
+      - REQUEST_DELAY_MIN=${REQUEST_DELAY_MIN:-7.0}
+      - REQUEST_DELAY_MAX=${REQUEST_DELAY_MAX:-10.0}
       - STRICT_REDIS_POOL=true
       - COOKIE_POOL_WAIT_TIMEOUT_SECONDS=0
       - REQUIRED_COOKIES=${REQUIRED_COOKIES:-6}
@@ -394,6 +411,9 @@ services:
       - python
       - main.py
       - --auto-refresh
+      - --proxies
+      - --proxy-file
+      - config/proxies_webshare_20.txt
       - --carrier
       - verizon
       - --bounds
@@ -402,7 +422,7 @@ services:
       - "24.396308"
       - "-66.934570"
       - --run-tag
-      - east
+      - rescrub3east
       - --randomize
       - --format
       - jsonl

@@ -17,6 +17,16 @@ config/proxies.txt
 data/
 logs/
 
+# Downloads (large JSONL/data files)
+downloads/
+
+# Tower search SQLite DB (large, regeneratable from JSONL)
+tower-search/data/
+
+# Tower search frontend build output
+tower-search/web/dist/
+tower-search/web/node_modules/
+
 # IDE
 .idea/
 .vscode/
@@ -40,6 +50,9 @@ backups/
 
 # Proxy lists (contain credentials)
 config/proxies*.txt
+config/*proxies*.txt
+config/*Proxies*.txt
+config/*proxy*.txt
 
 # Templates may contain sensitive values in this repo; keep local-only
 .env.example
